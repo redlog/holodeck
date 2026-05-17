@@ -107,6 +107,10 @@ def main():
     preview.save(preview_path, "PNG")
     print(f"Debug preview: {preview_path}")
 
+    ref_path = out_dir / "reference.png"
+    scene.save_reference(ref_path)
+    print(f"3D reference: {ref_path}")
+
     # Summary stats
     bands = arr // 16
     total = bands.size

@@ -79,6 +79,7 @@ def run_one(room_def, out_dir):
 
     Image.fromarray(arr, mode="L").save(room_out / "priority_map.png", "PNG")
     make_debug_preview(arr).save(room_out / "preview.png", "PNG")
+    scene.save_reference(room_out / "reference.png")
 
     bands = arr // 16
     total = bands.size

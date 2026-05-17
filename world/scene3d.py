@@ -201,6 +201,75 @@ class Scene3D:
         _log(f"Saved priority map to {path}")
         return path
 
+    # ---- 3D reference render ----
+
+    def render_reference(self):
+        """Render a flat-shaded 3D preview of the scene as a PIL Image (RGB).
+
+        Drawn at game resolution (960x600). Serves two purposes:
+          - debug visualization so we can see what the LLM built
+          - conditioning image for the art pass (step 3)
+
+        The camera is the same oblique projection used for the priority map,
+        so the 3D preview is spatially consistent with the priority map.
+        """
+        SKY = (170, 195, 220)
+        FLOOR = (190, 175, 145)
+        FLOOR_EDGE = (110, 95, 70)
+        TOP = (200, 200, 200)
+        FRONT = (140, 140, 145)
+        OUTLINE = (40, 40, 50)
+
+        img = Image.new("RGB", (INTERNAL_WIDTH, INTERNAL_HEIGHT), color=SKY)
+        draw = ImageDraw.Draw(img)
+
+        # Floor
+        if len(self.floor) >= 3:
+            floor_screen = self._project_polygon(self.floor, y=0.0)
+            draw.polygon(floor_screen, fill=FLOOR, outline=FLOOR_EDGE)
+
+        # Objects: painter's algorithm — draw back ones first (larger cz)
+        ordered = sorted(self.objects, key=lambda o: -o["position"][1])
+        for obj in ordered:
+            self._draw_box(draw, obj, TOP, FRONT, OUTLINE)
+
+        return img
+
+    def _draw_box(self, draw, obj, top_color, front_color, outline):
+        """Render one axis-aligned box as a flat-shaded top + front quad."""
+        cx, cz = obj["position"]
+        w, d, h = obj["size"]
+        hw, hd = w / 2.0, d / 2.0
+
+        # The 8 corners (x_left/x_right, y_bot/y_top, z_front/z_back)
+        # In screen space, front face is a rectangle, top face is a rectangle
+        # stacked above it (because the projection has no horizontal angle).
+        x_left = cx - hw
+        x_right = cx + hw
+        z_front = cz - hd
+        z_back = cz + hd
+
+        # Front face corners
+        fl_bot = project(x_left,  0, z_front)
+        fr_bot = project(x_right, 0, z_front)
+        fr_top = project(x_right, h, z_front)
+        fl_top = project(x_left,  h, z_front)
+        front_quad = [fl_bot, fr_bot, fr_top, fl_top]
+
+        # Top face corners
+        bl_top = project(x_left,  h, z_back)
+        br_top = project(x_right, h, z_back)
+        top_quad = [fl_top, fr_top, br_top, bl_top]
+
+        draw.polygon(top_quad, fill=top_color, outline=outline)
+        draw.polygon(front_quad, fill=front_color, outline=outline)
+
+    def save_reference(self, path):
+        img = self.render_reference()
+        img.save(path, "PNG")
+        _log(f"Saved reference render to {path}")
+        return path
+
 
 def _convex_hull(points):
     """Andrew's monotone chain convex hull. Input: list of (x, y) tuples."""
