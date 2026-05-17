@@ -135,6 +135,11 @@ class HolodeckMode:
         elif self.dm:
             self.dm.apply_response(response)
 
+        # Don't trigger any imagery/scenery generation while in interview phase
+        in_interview = self.author and getattr(self.author, "phase", None) == "interview"
+        if in_interview:
+            return
+
         if response.get("new_rooms"):
             names = [r.get("name", rid) for rid, r in response["new_rooms"].items()]
             self._append_lines("system", f"Created rooms: {', '.join(names)}")
@@ -149,9 +154,9 @@ class HolodeckMode:
         updates = response.get("world_updates", {})
         if updates and updates.get("player"):
             player = self.world_state["player"]
-            if player.get("description") and not player.get("sprite_sheet_path"):
+            if player.get("description") and player.get("name") and not player.get("sprite_sheet_path"):
                 self._trigger_character_generation({
-                    "player": {"id": "player", "name": player.get("name", "Player"), "description": player["description"]}
+                    "player": {"id": "player", "name": player["name"], "description": player["description"]}
                 })
 
     def _handle_command(self, cmd):
