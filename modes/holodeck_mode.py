@@ -56,8 +56,10 @@ class HolodeckMode:
         return False
 
     def update(self, dt, events):
-        # Always allow typing — slash commands need to work even while the LLM is thinking
+        # Always allow typing — slash commands need to work even while the LLM is thinking.
+        # But show a visual "busy" state so the user can see something's in flight.
         self.text_input.active = True
+        self.text_input.busy = self.busy
         self.text_input.update(dt)
 
         for event in events:
