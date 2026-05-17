@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 from pathlib import Path
 
@@ -16,38 +17,9 @@ def _log(msg):
     print(f"[SCENERY] {msg}", file=sys.stderr, flush=True)
 
 
-PRIORITY_MAP_PROMPT_TEMPLATE = """Generate a {width}x{height} GRAYSCALE image representing a Sierra-style priority map for an adventure game room.
-
-This is a TECHNICAL depth/walkability map, NOT artwork. Use ONLY shades of gray:
-
-- Pure black (0): Impassable areas — walls, sky, ceiling, solid furniture tops
-- Dark gray (bands 1-3, pixel values 16-63): Background scenery behind walkable areas — wall decorations, distant objects
-- Medium gray graduated by depth (bands 4-14, pixel values 64-239): Walkable ground. DARKER gray = further from viewer (top of walkable area). LIGHTER gray = closer to viewer (bottom of walkable area). The gradient should follow the floor's depth perspective.
-- Pure white (band 15, pixel value 240-255): Foreground elements that should render IN FRONT of characters — overhanging branches, awnings, railings in the foreground
-
-CRITICAL RULES:
-- The walkable area must be a CONTINUOUS region (no isolated walkable pixels)
-- Walkable areas should include paths, corridors, and open floor spaces
-- Objects ON the floor (tables, chairs, barrels) should be black (impassable) at their base footprint
-- The depth gradient goes from dark (top/far) to light (bottom/near) within the walkable zone
-- Exit locations should have walkable corridors leading to the edges of the image
-- Make paths interesting — winding, varied width, going around obstacles — NOT just a flat rectangle
-
-Room description: {description}
-
-Exits: {exits}
-
-Key features to account for: {features}
-"""
-
 BACKGROUND_PROMPT_TEMPLATE = """{visual_style}.
 Game background scene for a point-and-click adventure game.
-The attached grayscale reference image is a SPATIAL LAYOUT MAP — use it to understand WHERE things go:
-- Black areas in the map = walls, ceiling, sky, or solid objects (paint scenery here)
-- Gray gradient areas = walkable floor/ground (paint traversable ground here, with depth perspective matching the gradient)
-- White areas = foreground elements that should overlap characters (paint overhanging objects here)
-
-Paint a natural, detailed scene following this spatial structure. Do NOT include any characters or people.
+Paint a natural, detailed scene. Do NOT include any characters or people.
 Seen from a slight three-quarter overhead perspective.
 
 CRITICAL SCALE: A standing adult would be approximately 96 pixels tall ({height_pct}% of image height). Size all objects accordingly.
@@ -57,20 +29,31 @@ Scene description: {description}
 NO text, NO labels, NO UI elements, NO debug graphics. Just a beautiful painted game scene.
 """
 
-CORRECTION_PROMPT = """I'm providing two images:
-1. A painted game background scene
-2. The original priority map that guided the painting
+PRIORITY_MAP_PROMPT = """Look at this painted game background and generate a PRIORITY MAP — a simple flat-zoned
+grayscale image showing where a character can and cannot walk.
 
-The priority map may not perfectly match what was actually painted. I need you to generate a CORRECTED priority map (640x400 grayscale) that matches the ACTUAL painted scene:
+This is a TECHNICAL map with FLAT filled regions, NOT artwork. Do NOT trace edges or add detail.
+Think of it like a coloring book filled in with only 3-4 shades:
 
-- Areas that are clearly walls/ceiling/solid objects in the painting → black (0)
-- Areas that are clearly walkable floor/ground → medium gray gradient (darker at top/far, lighter at bottom/near, pixel values 64-239)
-- Background decorations behind walkable areas → dark gray (16-63)
-- Foreground objects that would overlap a character → white (240-255)
+- Pure black (pixel value 0): Areas the character CANNOT walk — walls, buildings, sky, ceiling,
+  furniture, tree trunks, solid objects. This should be the largest zone in most outdoor scenes
+  (sky + buildings + objects).
+- Medium gray (pixel value 128): Walkable ground — floors, paths, grass the character walks on,
+  open areas. Fill these as FLAT solid regions, no gradient needed.
+- Pure white (pixel value 255): Foreground elements that should render IN FRONT of characters —
+  overhanging tree canopies, awnings, archways, railings in the foreground. Only use this for
+  things a character would walk BEHIND/UNDER.
 
-Look at the actual painting carefully. If a path curves differently than the original map, follow the painting. If furniture is positioned slightly differently, match the painting.
+CRITICAL RULES:
+- Use FLAT SOLID fills — no gradients, no texture, no dithering, no edge detail
+- The walkable region must be CONTINUOUS (no isolated walkable islands)
+- Think about where a person's FEET would be — that's what determines walkability
+- Tree canopies that a character could walk under should be white (foreground overlay)
+- Tree trunks should be black (impassable)
+- The boundary between walkable and impassable should follow the scene geometry exactly
+- Keep it simple: big flat zones of black, gray, and white
 
-Output ONLY a 640x400 grayscale image. No text.
+Output ONLY the grayscale image. No text, no labels.
 """
 
 
@@ -89,32 +72,23 @@ class SceneryAgent(BaseAgent):
 
     def _pipeline(self, room_id, room_def, visual_style):
         try:
-            # Step 1: Generate priority map
-            _log(f"[{room_id}] Step 1: Generating priority map...")
-            priority_map_bytes = self._generate_priority_map(room_def)
-            if not priority_map_bytes:
-                self._result_queue.put(("error", room_id, "Failed to generate priority map"))
-                return
-            priority_map_path = self._save_priority_map(room_id, priority_map_bytes)
-            _log(f"[{room_id}] Priority map saved to {priority_map_path}")
-
-            # Step 2: Generate painted background
-            _log(f"[{room_id}] Step 2: Generating background artwork...")
-            background_bytes = self._generate_background(room_def, visual_style, priority_map_bytes)
+            # Step 1: Generate painted background
+            _log(f"[{room_id}] Step 1: Generating background artwork...")
+            background_bytes = self._generate_background(room_def, visual_style)
             if not background_bytes:
                 self._result_queue.put(("error", room_id, "Failed to generate background"))
                 return
             background_path = self._save_background(room_id, background_bytes)
             _log(f"[{room_id}] Background saved to {background_path}")
 
-            # Step 3: Correction pass
-            _log(f"[{room_id}] Step 3: Running correction pass...")
-            corrected_bytes = self._correct_priority_map(priority_map_bytes, background_bytes, room_def)
-            if corrected_bytes:
-                self._save_priority_map(room_id, corrected_bytes)
-                _log(f"[{room_id}] Corrected priority map saved")
-            else:
-                _log(f"[{room_id}] Correction pass failed, keeping original priority map")
+            # Step 2: Derive priority map from the actual painted background
+            _log(f"[{room_id}] Step 2: Deriving priority map from background...")
+            priority_map_bytes = self._derive_priority_map(background_bytes)
+            if not priority_map_bytes:
+                self._result_queue.put(("error", room_id, "Failed to derive priority map"))
+                return
+            priority_map_path = self._save_priority_map(room_id, priority_map_bytes)
+            _log(f"[{room_id}] Priority map saved to {priority_map_path}")
 
             self._result_queue.put(("room_complete", room_id, {
                 "background_path": str(background_path),
@@ -128,41 +102,7 @@ class SceneryAgent(BaseAgent):
         finally:
             self._pending.pop(room_id, None)
 
-    def _generate_priority_map(self, room_def):
-        description = room_def.get("description", "")
-        exits = room_def.get("exits", {})
-        exit_descriptions = []
-        for direction, target in exits.items():
-            if target:
-                exit_descriptions.append(f"{direction} exit (leads to {target})")
-
-        features = []
-        for obj in room_def.get("objects_present", []):
-            if isinstance(obj, str):
-                features.append(obj)
-            elif isinstance(obj, dict):
-                features.append(obj.get("name", obj.get("id", "")))
-
-        prompt = PRIORITY_MAP_PROMPT_TEMPLATE.format(
-            width=PRIORITY_MAP_WIDTH,
-            height=PRIORITY_MAP_HEIGHT,
-            description=description,
-            exits=", ".join(exit_descriptions) if exit_descriptions else "none specified",
-            features=", ".join(features) if features else "standard room furnishings as described",
-        )
-
-        image_bytes = self._call_image(prompt, aspect_ratio="16:10")
-        if not image_bytes:
-            return None
-
-        img = Image.open(io.BytesIO(image_bytes)).convert("L")
-        img = img.resize((PRIORITY_MAP_WIDTH, PRIORITY_MAP_HEIGHT), Image.LANCZOS)
-
-        buf = io.BytesIO()
-        img.save(buf, "PNG")
-        return buf.getvalue()
-
-    def _generate_background(self, room_def, visual_style, priority_map_bytes):
+    def _generate_background(self, room_def, visual_style):
         description = room_def.get("description", "")
         height_pct = int(96 * 100 / INTERNAL_HEIGHT)
 
@@ -172,11 +112,7 @@ class SceneryAgent(BaseAgent):
             height_pct=height_pct,
         )
 
-        image_bytes = self._call_image(
-            prompt,
-            reference_images=[priority_map_bytes],
-            aspect_ratio="16:10",
-        )
+        image_bytes = self._call_image(prompt, aspect_ratio="16:10")
         if not image_bytes:
             return None
 
@@ -188,22 +124,20 @@ class SceneryAgent(BaseAgent):
         img.save(buf, "PNG")
         return buf.getvalue()
 
-    def _correct_priority_map(self, priority_map_bytes, background_bytes, room_def):
+    def _derive_priority_map(self, background_bytes):
         from google import genai
         from google.genai import types
-        import os
 
         api_key = os.getenv("GEMINI_API_KEY")
-        vision_client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key)
 
         contents = [
             types.Part.from_bytes(data=background_bytes, mime_type="image/png"),
-            types.Part.from_bytes(data=priority_map_bytes, mime_type="image/png"),
-            CORRECTION_PROMPT,
+            PRIORITY_MAP_PROMPT,
         ]
 
         try:
-            response = vision_client.models.generate_content(
+            response = client.models.generate_content(
                 model=GEMINI_VISION_MODEL,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -214,12 +148,12 @@ class SceneryAgent(BaseAgent):
             for part in response.candidates[0].content.parts:
                 if part.inline_data and part.inline_data.mime_type.startswith("image/"):
                     img = Image.open(io.BytesIO(part.inline_data.data)).convert("L")
-                    img = img.resize((PRIORITY_MAP_WIDTH, PRIORITY_MAP_HEIGHT), Image.LANCZOS)
+                    img = img.resize((PRIORITY_MAP_WIDTH, PRIORITY_MAP_HEIGHT), Image.NEAREST)
                     buf = io.BytesIO()
                     img.save(buf, "PNG")
                     return buf.getvalue()
         except Exception as e:
-            _log(f"Correction pass error: {e}")
+            _log(f"Priority map derivation error: {e}")
 
         return None
 
