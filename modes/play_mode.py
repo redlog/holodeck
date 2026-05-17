@@ -13,10 +13,13 @@ def _log(msg):
 
 
 class PlayMode:
-    def __init__(self, surface, world_state, image_gen=None, game_slug=None):
+    def __init__(self, surface, world_state, image_gen=None, game_slug=None,
+                 scenery_agent=None, character_agent=None):
         self.surface = surface
         self.world_state = world_state
         self.image_gen = image_gen
+        self.scenery_agent = scenery_agent
+        self.character_agent = character_agent
         self._game_slug = game_slug
         self.renderer = Renderer(surface)
         self.background_color = (30, 20, 40)
@@ -38,16 +41,29 @@ class PlayMode:
         self._generate_missing_images()
 
     def _generate_missing_images(self):
-        if not self.image_gen or not self.image_gen.connected:
-            return
         visual_style = self.world_state.get("meta", {}).get("visual_style", "")
 
         player = self.world_state.get("player", {})
-        # If player has a character_id, pull description from that character
         player_desc = player.get("description")
         if not player_desc and player.get("character_id"):
             char_def = self.world_state.get("characters", {}).get(player["character_id"], {})
             player_desc = char_def.get("description")
+
+        # Prefer the new character agent
+        if self.character_agent and self.character_agent.connected:
+            if player_desc and not player.get("sprite_sheet_path"):
+                player_name = player.get("name") or player.get("character_id", "Player")
+                player_def = {"name": player_name, "description": player_desc}
+                self.character_agent.generate_character("player", player_def, visual_style)
+
+            for char_id, char_def in self.world_state.get("characters", {}).items():
+                if not char_def.get("sprite_path") or not char_def.get("portrait_path"):
+                    self.character_agent.generate_character(char_id, char_def, visual_style)
+            return
+
+        # Fallback to legacy image_gen
+        if not self.image_gen or not self.image_gen.connected:
+            return
 
         if player_desc and not player.get("sprite_sheet_path"):
             player_name = player.get("name") or player.get("character_id", "Player")
@@ -152,6 +168,53 @@ class PlayMode:
 
             self._request_current_room_image()
 
+        # Poll character agent results
+        if self.character_agent:
+            result = self.character_agent.poll_result()
+            while result:
+                kind, entity_id, data = result
+                if kind == "character_complete":
+                    if entity_id == "player":
+                        self.world_state["player"]["sprite_sheet_path"] = data["sprite_path"]
+                        self.world_state["player"]["portrait_path"] = data["portrait_path"]
+                        self.player_sprite = AnimatedSprite(sprite_sheet_path=data["sprite_path"])
+                        self.player_sprite.x = self.world_state["player"]["position"]["x"]
+                        self.player_sprite.y = self.world_state["player"]["position"]["y"]
+                        self.notifications.append("Player sprite & portrait ready.")
+                    else:
+                        char_def = self.world_state.get("characters", {}).get(entity_id)
+                        if char_def:
+                            char_def["sprite_path"] = data["sprite_path"]
+                            char_def["portrait_path"] = data["portrait_path"]
+                        name = (self.world_state.get("characters", {}).get(entity_id, {}).get("name") or entity_id)
+                        self.notifications.append(f"Imagery ready for {name}.")
+                elif kind == "error":
+                    self.notifications.append(f"Character imagery failed for {entity_id}: {data}")
+                result = self.character_agent.poll_result()
+
+        # Poll scenery agent results
+        if self.scenery_agent:
+            result = self.scenery_agent.poll_result()
+            while result:
+                kind, entity_id, data = result
+                if kind == "room_complete":
+                    room_def = self.world_state.get("rooms", {}).get(entity_id)
+                    if room_def:
+                        room_def["background_path"] = data["background_path"]
+                        room_def["priority_map_path"] = data["priority_map_path"]
+                    self._load_background_surface(entity_id, data["background_path"])
+                    self._loading_rooms.discard(entity_id)
+                    # Reload room object with priority map
+                    if entity_id in self._room_objects:
+                        updated_def = self.world_state.get("rooms", {}).get(entity_id)
+                        if updated_def:
+                            self._room_objects[entity_id] = Room(updated_def)
+                    self.notifications.append(f"Room '{entity_id}' scenery complete.")
+                elif kind == "error":
+                    self._loading_rooms.discard(entity_id)
+                    self.notifications.append(f"Scenery failed for {entity_id}: {data}")
+                result = self.scenery_agent.poll_result()
+
     def _transition_room(self, target_room_id, from_direction):
         _log(f"Transitioning to room '{target_room_id}' from {from_direction}")
 
@@ -184,8 +247,6 @@ class PlayMode:
         current_room_id = self.world_state.get("player", {}).get("current_room")
         if not current_room_id:
             return
-        if current_room_id in self._background_cache:
-            return
         if current_room_id in self._loading_rooms:
             return
 
@@ -193,12 +254,26 @@ class PlayMode:
         if not room_def:
             return
 
-        if room_def.get("background_path"):
-            path = Path(room_def["background_path"])
-            if path.exists():
-                self._load_background_surface(current_room_id, str(path))
-                return
+        has_priority_map = bool(room_def.get("priority_map_path")) and Path(room_def.get("priority_map_path", "")).exists()
+        has_background = bool(room_def.get("background_path")) and Path(room_def.get("background_path", "")).exists()
 
+        # Load existing background into surface cache
+        if has_background and current_room_id not in self._background_cache:
+            self._load_background_surface(current_room_id, room_def["background_path"])
+
+        # Prefer the new scenery agent: regenerate if no priority map exists
+        if self.scenery_agent and self.scenery_agent.connected:
+            if not has_priority_map:
+                visual_style = self.world_state.get("meta", {}).get("visual_style", "")
+                self._loading_rooms.add(current_room_id)
+                self.scenery_agent.generate_room(current_room_id, room_def, visual_style)
+            return
+
+        # Legacy fallback
+        if current_room_id in self._background_cache:
+            return
+        if has_background:
+            return
         prompt = room_def.get("background_prompt")
         if prompt and self.image_gen and self.image_gen.connected:
             visual_style = self.world_state.get("meta", {}).get("visual_style", "")
@@ -229,6 +304,22 @@ class PlayMode:
         # Draw player sprite
         if current_room_id:
             self.player_sprite.render(self.surface)
+
+        # Draw foreground overlay (priority band 15 elements render on top of characters)
+        room = self._get_current_room()
+        if room and room.priority_map:
+            fg_mask = room.priority_map.get_foreground_mask()
+            if fg_mask and current_room_id in self._background_cache:
+                # Composite: take the background pixels where foreground mask is opaque
+                bg_surf = self._background_cache[current_room_id]
+                fg_surf = bg_surf.copy()
+                fg_surf.set_colorkey(None)
+                # Use the mask alpha to selectively blit background pixels on top
+                masked = fg_surf.copy().convert_alpha()
+                masked.fill((0, 0, 0, 0))
+                masked.blit(bg_surf, (0, 0))
+                masked.blit(fg_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                self.surface.blit(masked, (0, 0))
 
         if self._debug_draw:
             self._render_debug()
@@ -273,21 +364,29 @@ class PlayMode:
 
         font = get_font(10)
 
-        # Walkable zone boundary
-        pct = room.walkable_zone.get("value", 65) / 100
-        top = int(INTERNAL_HEIGHT * (1 - pct))
-        pygame.draw.line(self.surface, (0, 255, 0), (0, top), (INTERNAL_WIDTH, top), 1)
-        label = font.render(f"walkable top (y={top})", False, (0, 255, 0))
-        self.surface.blit(label, (4, top + 2))
+        # Priority map overlay (if available)
+        if room.priority_map:
+            debug_surf = room.priority_map.to_debug_surface()
+            if debug_surf:
+                self.surface.blit(debug_surf, (0, 0))
+            band = room.priority_map.get_band(int(self.player_sprite.x), int(self.player_sprite.y))
+            band_surf = font.render(f"band={band}", False, (255, 255, 0))
+            self.surface.blit(band_surf, (int(self.player_sprite.x) + 20, int(self.player_sprite.y) - 24))
+        else:
+            # Legacy rectangle-based debug
+            pct = room.walkable_zone.get("value", 65) / 100
+            top = int(INTERNAL_HEIGHT * (1 - pct))
+            pygame.draw.line(self.surface, (0, 255, 0), (0, top), (INTERNAL_WIDTH, top), 1)
+            label = font.render(f"walkable top (y={top})", False, (0, 255, 0))
+            self.surface.blit(label, (4, top + 2))
 
-        # Obstacles
-        for obs in room.obstacles:
-            r = obs.get("rect", {})
-            rect = pygame.Rect(r.get("x", 0), r.get("y", 0), r.get("width", 0), r.get("height", 0))
-            pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
-            name = obs.get("label", obs.get("id", ""))
-            name_surf = font.render(name, False, (255, 100, 100))
-            self.surface.blit(name_surf, (rect.x + 2, rect.y + 2))
+            for obs in room.obstacles:
+                r = obs.get("rect", {})
+                rect = pygame.Rect(r.get("x", 0), r.get("y", 0), r.get("width", 0), r.get("height", 0))
+                pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
+                name = obs.get("label", obs.get("id", ""))
+                name_surf = font.render(name, False, (255, 100, 100))
+                self.surface.blit(name_surf, (rect.x + 2, rect.y + 2))
 
         # Exit zones
         for direction, zone in room.exit_zones.items():

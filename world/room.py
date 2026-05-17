@@ -1,4 +1,6 @@
 import sys
+from pathlib import Path
+
 from config import INTERNAL_WIDTH, INTERNAL_HEIGHT
 
 
@@ -17,6 +19,13 @@ class Room:
             "type": "lower_percentage", "value": 65
         })
         self.entry_points = definition.get("entry_points", {})
+        self.priority_map = None
+
+        pm_path = definition.get("priority_map_path")
+        if pm_path and Path(pm_path).exists():
+            from world.priority_map import PriorityMap
+            self.priority_map = PriorityMap(pm_path)
+
         self._build_default_exit_zones()
 
     def _build_default_exit_zones(self):
@@ -38,6 +47,10 @@ class Room:
         if not (0 <= x < INTERNAL_WIDTH and 0 <= y < INTERNAL_HEIGHT):
             return False
 
+        if self.priority_map:
+            return self.priority_map.can_walk(x, y)
+
+        # Legacy rectangle-based fallback
         wz = self.walkable_zone
         if wz.get("type") == "lower_percentage":
             pct = wz.get("value", 65) / 100

@@ -15,6 +15,9 @@ from rendering.save_load_ui import SaveLoadUI
 from rendering.game_menu import GameMenu
 from dm.dungeon_master import DungeonMaster
 from dm.image_gen import ImageGenerator
+from agents.author import AuthorAgent
+from agents.scenery import SceneryAgent
+from agents.character_imagery import CharacterImageryAgent
 
 
 def _flip(screen, window):
@@ -65,10 +68,19 @@ def run_game(screen, window, clock, game_slug, world_state):
     has_world = bool(world_state["player"]["current_room"])
     current_mode = "holodeck" if not has_world else "play"
 
+    # New multi-agent system
+    author = AuthorAgent(world_state)
+    scenery = SceneryAgent(cache_dir)
+    character = CharacterImageryAgent(cache_dir)
+
+    # Legacy (kept for fallback/compatibility)
     dm = DungeonMaster(world_state)
     image_gen = ImageGenerator(cache_dir=cache_dir)
-    play_mode = PlayMode(screen, world_state, image_gen, game_slug)
-    holodeck_mode = HolodeckMode(screen, world_state, dm, image_gen)
+
+    play_mode = PlayMode(screen, world_state, image_gen, game_slug,
+                         scenery_agent=scenery, character_agent=character)
+    holodeck_mode = HolodeckMode(screen, world_state, author=author, scenery=scenery,
+                                  character=character, image_gen=image_gen)
     save_load_ui = SaveLoadUI(screen)
 
     title = world_state.get("meta", {}).get("title", "The Holodeck")
@@ -123,10 +135,16 @@ def run_game(screen, window, clock, game_slug, world_state):
                         loaded = load_game(game_slug, slot)
                         if loaded:
                             world_state = loaded
+                            author = AuthorAgent(world_state)
+                            scenery = SceneryAgent(cache_dir)
+                            character = CharacterImageryAgent(cache_dir)
                             dm = DungeonMaster(world_state)
                             image_gen = ImageGenerator(cache_dir=cache_dir)
-                            play_mode = PlayMode(screen, world_state, image_gen, game_slug)
-                            holodeck_mode = HolodeckMode(screen, world_state, dm, image_gen)
+                            play_mode = PlayMode(screen, world_state, image_gen, game_slug,
+                         scenery_agent=scenery, character_agent=character)
+                            holodeck_mode = HolodeckMode(screen, world_state, author=author,
+                                                         scenery=scenery, character=character,
+                                                         image_gen=image_gen)
                             holodeck_mode.console_lines.append(
                                 ("system", f"Game loaded from '{slot}'.")
                             )
