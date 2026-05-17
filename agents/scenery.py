@@ -7,7 +7,7 @@ from PIL import Image
 
 from agents.base import BaseAgent
 from config import (
-    GEMINI_SCENERY_MODEL, GEMINI_VISION_MODEL,
+    GEMINI_SCENERY_MODEL,
     INTERNAL_WIDTH, INTERNAL_HEIGHT,
     PRIORITY_MAP_WIDTH, PRIORITY_MAP_HEIGHT,
 )
@@ -138,7 +138,7 @@ class SceneryAgent(BaseAgent):
 
         try:
             response = client.models.generate_content(
-                model=GEMINI_VISION_MODEL,
+                model=GEMINI_SCENERY_MODEL,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     response_modalities=["image", "text"],
