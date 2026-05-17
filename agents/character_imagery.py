@@ -65,12 +65,22 @@ class CharacterImageryAgent(BaseAgent):
         try:
             description = char_def.get("description", char_def.get("name", "a character"))
 
-            # Phase 1: Generate key poses
+            # Phase 1: Generate key poses (front first, then back/side cascade off front
+            # so clothing/hair/colors stay consistent across views)
             _log(f"[{char_id}] Phase 1: Generating key poses...")
             poses = {}
-            for view in ["front", "back", "side"]:
-                _log(f"[{char_id}]   Generating {view} pose...")
-                pose_bytes = self._generate_key_pose(view, description, visual_style)
+
+            _log(f"[{char_id}]   Generating front pose (no reference)...")
+            front_bytes = self._generate_key_pose("front", description, visual_style, reference_pose=None)
+            if not front_bytes:
+                self._result_queue.put(("error", char_id, "Failed to generate front pose"))
+                return
+            poses["front"] = front_bytes
+            _log(f"[{char_id}]   front pose OK")
+
+            for view in ["back", "side"]:
+                _log(f"[{char_id}]   Generating {view} pose (referencing front)...")
+                pose_bytes = self._generate_key_pose(view, description, visual_style, reference_pose=front_bytes)
                 if not pose_bytes:
                     self._result_queue.put(("error", char_id, f"Failed to generate {view} pose"))
                     return
@@ -138,7 +148,29 @@ class CharacterImageryAgent(BaseAgent):
         finally:
             self._pending.pop(char_id, None)
 
-    def _generate_key_pose(self, view, description, visual_style):
+    def _generate_key_pose(self, view, description, visual_style, reference_pose=None):
+        if reference_pose is not None:
+            # Cascade off the front pose so the same person (clothes, hair, colors,
+            # build, accessories) appears in every view
+            prompt = (
+                f"{visual_style}. "
+                f"The reference image shows the EXACT character — same clothing, same colors, "
+                f"same hair, same build, same accessories. Generate the SAME character "
+                f"standing in a neutral idle pose, but now {VIEW_DESCRIPTIONS[view]}. "
+                f"\n\nThis is the same person from a different camera angle — every detail "
+                f"of their wardrobe and appearance must match the reference exactly: "
+                f"same shirt color and style, same pants/skirt color and style, same shoes, "
+                f"same hair color and length, same skin tone, same body proportions, same height. "
+                f"Only the camera angle changes.\n\n"
+                f"FULL BODY must be visible — top of head to bottom of feet. Do not crop. "
+                f"Leave a margin around the character. Center the character in the image. "
+                f"The ENTIRE background must be solid pure magenta (#FF00FF). "
+                f"No shadows, no floor, no gradients, no other colors, no other characters, "
+                f"no objects, no text, no labels."
+            )
+            return self._call_image(prompt, reference_images=[reference_pose], aspect_ratio="9:16")
+
+        # No reference yet — establish the canonical look from text alone
         prompt = (
             f"{visual_style}. "
             f"A single video game character standing in a neutral idle pose, {VIEW_DESCRIPTIONS[view]}. "
