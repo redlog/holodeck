@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from config import GEMINI_IMAGE_MODEL
+from config import SCENERY_MODEL
 
 
 def _log(msg):
@@ -33,7 +33,7 @@ Render the entire frame with care — every region should be finished painted ar
 
 class SceneryAgent(BaseAgent):
     def __init__(self, cache_dir):
-        super().__init__(model=GEMINI_IMAGE_MODEL, temperature=0.7)
+        super().__init__(model=SCENERY_MODEL, temperature=0.7)
         self._cache_dir = Path(cache_dir)
         self._pending = {}
 

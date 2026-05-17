@@ -78,8 +78,10 @@ class BaseAgent:
         return response.text
 
     def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9"):
-        from config import GEMINI_IMAGE_MODEL
-        image_model = self._model if self._model.startswith("gemini") else GEMINI_IMAGE_MODEL
+        # The agent's self._model dictates which API path we take — no
+        # silent fallbacks. Imagen models use the Imagen image API (which
+        # honors aspect_ratio); Gemini image models use generate_content.
+        image_model = self._model
 
         if image_model.startswith("imagen"):
             response = self._client.models.generate_images(

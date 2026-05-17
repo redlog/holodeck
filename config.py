@@ -18,3 +18,6 @@ GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-pro")
 GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+# Room backgrounds go through Imagen — it natively supports aspect ratios.
+# (Gemini's image model returns 1024x1024 squares no matter what.)
+SCENERY_MODEL = os.getenv("SCENERY_MODEL", "imagen-4.0-generate-001")
