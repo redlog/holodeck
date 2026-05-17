@@ -87,29 +87,20 @@ class CharacterImageryAgent(BaseAgent):
                 poses[view] = pose_bytes
                 _log(f"[{char_id}]   {view} pose OK")
 
-            # Phase 2: Generate each walk frame individually (more reliable than strips)
-            _log(f"[{char_id}] Phase 2: Generating walk frames ({SPRITE_WALK_FRAMES} per view)...")
+            # Phase 2: Generate walk frames as a single strip per view (4 frames each)
+            _log(f"[{char_id}] Phase 2: Generating walk strips...")
             strips = {}
             for view in ["front", "back", "side"]:
-                view_frames = []
-                for frame_idx in range(SPRITE_WALK_FRAMES):
-                    _log(f"[{char_id}]   Generating {view} frame {frame_idx + 1}/{SPRITE_WALK_FRAMES}...")
-                    frame_bytes = self._generate_walk_frame(
-                        view, frame_idx, description, visual_style, poses[view]
-                    )
-                    if not frame_bytes:
-                        self._result_queue.put(("error", char_id, f"Failed to generate {view} frame {frame_idx}"))
-                        return
-                    processed = self._process_frame(frame_bytes, f"{char_id}_{view}_{frame_idx}")
-                    if not processed:
-                        # Fall back to the key pose if a frame fails to process
-                        _log(f"[{char_id}]   {view} frame {frame_idx} processing failed; using key pose fallback")
-                        processed = self._process_frame(poses[view], f"{char_id}_{view}_{frame_idx}_fallback")
-                        if not processed:
-                            processed = Image.new("RGBA", (SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT), (0, 0, 0, 0))
-                    view_frames.append(processed)
+                _log(f"[{char_id}]   Generating {view} walk strip (all {SPRITE_WALK_FRAMES} frames)...")
+                strip_bytes = self._generate_walk_strip(
+                    view, description, visual_style, poses[view]
+                )
+                if not strip_bytes:
+                    self._result_queue.put(("error", char_id, f"Failed to generate {view} walk strip"))
+                    return
+                view_frames = self._slice_strip(strip_bytes, f"{char_id}_{view}")
                 strips[view] = view_frames
-                _log(f"[{char_id}]   {view} frames complete ({len(view_frames)})")
+                _log(f"[{char_id}]   {view} strip sliced into {len(view_frames)} frames")
 
             # Phase 3: Generate portrait
             _log(f"[{char_id}] Phase 3: Generating portrait...")
@@ -184,24 +175,57 @@ class CharacterImageryAgent(BaseAgent):
         )
         return self._call_image(prompt, aspect_ratio="9:16")
 
-    def _generate_walk_frame(self, view, frame_idx, description, visual_style, reference_pose):
-        pose_description = WALK_POSES[view][frame_idx]
+    def _generate_walk_strip(self, view, description, visual_style, reference_pose):
+        pose_lines = "\n".join(
+            f"  Frame {i + 1} (column {i + 1}): {WALK_POSES[view][i]}"
+            for i in range(SPRITE_WALK_FRAMES)
+        )
         prompt = (
             f"{visual_style}. "
-            f"Using the reference image as the EXACT character design, generate a SINGLE frame "
-            f"of a walking animation. The character must be IDENTICAL to the reference image — "
-            f"same face, same hair, same clothing, same colors, same proportions, same height. "
-            f"\n\nView orientation: the character is {VIEW_DESCRIPTIONS[view]}. "
-            f"This is non-negotiable — do NOT show any other view angle. "
-            f"\n\nPose for this frame: {pose_description} "
-            f"\n\nThe FULL BODY must be visible — from the top of the head to the bottom of the feet. "
-            f"Do NOT crop the head, hands, or feet. Leave a small margin around the character. "
-            f"The character is centered in the image. "
-            f"\n\nThe ENTIRE background is solid pure magenta (#FF00FF, RGB 255,0,255) — "
-            f"uniform color with no gradients, no shadows, no floor, no other colors. "
-            f"No other characters, no objects, no scenery, no text, no labels, no borders."
+            f"Using the reference image as the EXACT character design, generate a HORIZONTAL STRIP "
+            f"containing exactly {SPRITE_WALK_FRAMES} frames of a walking animation, laid out "
+            f"LEFT to RIGHT in a single row. Each frame shows the SAME character in a different "
+            f"walk-cycle pose.\n\n"
+            f"The character must be IDENTICAL to the reference image in every frame — "
+            f"same face, same hair, same clothing, same colors, same proportions, same height.\n\n"
+            f"View orientation for ALL frames: the character is {VIEW_DESCRIPTIONS[view]}. "
+            f"Every frame uses this SAME camera angle — do NOT vary it.\n\n"
+            f"The {SPRITE_WALK_FRAMES} poses from left to right:\n{pose_lines}\n\n"
+            f"LAYOUT RULES:\n"
+            f"- Exactly {SPRITE_WALK_FRAMES} figures side by side in one row, evenly spaced\n"
+            f"- Each figure shows FULL BODY — top of head to bottom of feet, not cropped\n"
+            f"- All figures stand on the same invisible ground line (feet aligned)\n"
+            f"- Figures do NOT overlap — clear separation between each\n"
+            f"- The ENTIRE background is solid pure magenta (#FF00FF, RGB 255,0,255)\n"
+            f"- No shadows, no floor, no gradients, no other colors in the background\n"
+            f"- No text, no labels, no borders, no frame dividers, no numbers"
         )
-        return self._call_image(prompt, reference_images=[reference_pose], aspect_ratio="9:16")
+        return self._call_image(prompt, reference_images=[reference_pose], aspect_ratio="16:9")
+
+    def _slice_strip(self, strip_bytes, debug_name=None):
+        img = Image.open(io.BytesIO(strip_bytes)).convert("RGBA")
+        arr = np.array(img)
+
+        debug_dir = self._cache_dir / "_debug"
+        if debug_name:
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            img.save(debug_dir / f"raw_strip_{debug_name}.png", "PNG")
+
+        w = img.width
+        col_w = w // SPRITE_WALK_FRAMES
+        frames = []
+        for i in range(SPRITE_WALK_FRAMES):
+            x0 = i * col_w
+            x1 = x0 + col_w if i < SPRITE_WALK_FRAMES - 1 else w
+            col_img = img.crop((x0, 0, x1, img.height))
+
+            col_bytes = io.BytesIO()
+            col_img.save(col_bytes, "PNG")
+            processed = self._process_frame(col_bytes.getvalue(), f"{debug_name}_{i}" if debug_name else None)
+            if not processed:
+                processed = Image.new("RGBA", (SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT), (0, 0, 0, 0))
+            frames.append(processed)
+        return frames
 
     def _generate_portrait(self, description, visual_style, reference_pose, extra_guidance=""):
         guidance = extra_guidance + " " if extra_guidance else ""
