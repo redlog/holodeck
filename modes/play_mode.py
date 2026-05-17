@@ -291,6 +291,12 @@ class PlayMode:
         self.surface.fill(self.background_color)
 
         current_room_id = self.world_state.get("player", {}).get("current_room")
+
+        if self._debug_draw:
+            self._render_debug()
+            self._render_hud(current_room_id)
+            return
+
         if current_room_id and current_room_id in self._background_cache:
             self.surface.blit(self._background_cache[current_room_id], (0, 0))
         elif current_room_id and current_room_id in self._loading_rooms:
@@ -310,19 +316,14 @@ class PlayMode:
         if room and room.priority_map:
             fg_mask = room.priority_map.get_foreground_mask()
             if fg_mask and current_room_id in self._background_cache:
-                # Composite: take the background pixels where foreground mask is opaque
                 bg_surf = self._background_cache[current_room_id]
                 fg_surf = bg_surf.copy()
                 fg_surf.set_colorkey(None)
-                # Use the mask alpha to selectively blit background pixels on top
                 masked = fg_surf.copy().convert_alpha()
                 masked.fill((0, 0, 0, 0))
                 masked.blit(bg_surf, (0, 0))
                 masked.blit(fg_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
                 self.surface.blit(masked, (0, 0))
-
-        if self._debug_draw:
-            self._render_debug()
 
         # HUD
         self._render_hud(current_room_id)
@@ -364,7 +365,6 @@ class PlayMode:
 
         font = get_font(10)
 
-        # Priority map overlay (if available)
         if room.priority_map:
             debug_surf = room.priority_map.to_debug_surface()
             if debug_surf:
@@ -372,34 +372,6 @@ class PlayMode:
             band = room.priority_map.get_band(int(self.player_sprite.x), int(self.player_sprite.y))
             band_surf = font.render(f"band={band}", False, (255, 255, 0))
             self.surface.blit(band_surf, (int(self.player_sprite.x) + 20, int(self.player_sprite.y) - 24))
-        else:
-            # Legacy rectangle-based debug
-            pct = room.walkable_zone.get("value", 65) / 100
-            top = int(INTERNAL_HEIGHT * (1 - pct))
-            pygame.draw.line(self.surface, (0, 255, 0), (0, top), (INTERNAL_WIDTH, top), 1)
-            label = font.render(f"walkable top (y={top})", False, (0, 255, 0))
-            self.surface.blit(label, (4, top + 2))
-
-            for obs in room.obstacles:
-                r = obs.get("rect", {})
-                rect = pygame.Rect(r.get("x", 0), r.get("y", 0), r.get("width", 0), r.get("height", 0))
-                pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
-                name = obs.get("label", obs.get("id", ""))
-                name_surf = font.render(name, False, (255, 100, 100))
-                self.surface.blit(name_surf, (rect.x + 2, rect.y + 2))
-
-        # Exit zones
-        for direction, zone in room.exit_zones.items():
-            target = room.exits.get(direction)
-            if not target:
-                continue
-            try:
-                rect = pygame.Rect(int(zone.get("x", 0)), int(zone.get("y", 0)), int(zone.get("width", 0)), int(zone.get("height", 0)))
-            except (TypeError, ValueError):
-                continue
-            pygame.draw.rect(self.surface, (0, 150, 255), rect, 2)
-            exit_surf = font.render(f"exit {direction} -> {target}", False, (0, 150, 255))
-            self.surface.blit(exit_surf, (rect.x + 2, rect.y + 2))
 
         # Player position
         pos_surf = font.render(f"({int(self.player_sprite.x)}, {int(self.player_sprite.y)})", False, (255, 255, 0))

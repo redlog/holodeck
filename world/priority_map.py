@@ -100,23 +100,9 @@ class PriorityMap:
             return None
 
         bands = self._data // 16
-        h, w = bands.shape
-        rgb = np.zeros((h, w, 3), dtype=np.uint8)
-
-        # Band 0: black (impassable)
-        # Bands 1-3: purple (background scenery)
-        mask_bg = (bands >= 1) & (bands <= 3)
-        rgb[mask_bg] = [80, 40, 120]
-
-        # Bands 4-14: green gradient (walkable, darker=further)
-        for b in range(PRIORITY_WALKABLE_MIN, PRIORITY_WALKABLE_MAX + 1):
-            mask = bands == b
-            intensity = int(60 + (b - PRIORITY_WALKABLE_MIN) * 16)
-            rgb[mask] = [0, intensity, 0]
-
-        # Band 15: white (foreground)
-        mask_fg = bands == PRIORITY_FOREGROUND
-        rgb[mask_fg] = [255, 255, 255]
+        # Black = highest priority (band 15), white = lowest (band 0)
+        gray = (255 - bands * 17).clip(0, 255).astype(np.uint8)
+        rgb = np.stack([gray, gray, gray], axis=-1)
 
         debug_img = Image.fromarray(rgb, "RGB")
         debug_img = debug_img.resize((INTERNAL_WIDTH, INTERNAL_HEIGHT), Image.NEAREST)
@@ -124,6 +110,5 @@ class PriorityMap:
         surf = pygame.image.fromstring(
             debug_img.tobytes(), (INTERNAL_WIDTH, INTERNAL_HEIGHT), "RGB"
         ).convert()
-        surf.set_alpha(128)
         self._debug_surface = surf
         return self._debug_surface
