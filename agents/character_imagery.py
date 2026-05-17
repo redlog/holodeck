@@ -20,9 +20,31 @@ def _log(msg):
 
 
 VIEW_DESCRIPTIONS = {
-    "front": "facing directly TOWARD the camera (front view, full face visible)",
-    "back": "facing directly AWAY from the camera (back of head and body visible, NO face)",
-    "side": "in strict side profile facing to the LEFT (only one side of body visible)",
+    "front": "facing directly TOWARD the camera (front view, full face visible, looking at the viewer)",
+    "back": "facing directly AWAY from the camera (back of head and back of body visible, NO face shown)",
+    "side": "in strict side profile facing to the LEFT (only the left side of the body visible)",
+}
+
+# 4-frame walk cycle pose descriptions, per view
+WALK_POSES = {
+    "front": [
+        "stepping with the RIGHT foot forward, LEFT arm swinging forward to balance, RIGHT arm back. Mid-stride pose.",
+        "legs passing through the center together, body weight balanced, arms close to sides. Neutral mid-step.",
+        "stepping with the LEFT foot forward, RIGHT arm swinging forward to balance, LEFT arm back. Mid-stride pose.",
+        "legs passing through the center together, body weight balanced, arms close to sides. Neutral mid-step.",
+    ],
+    "back": [
+        "stepping with the RIGHT foot forward (visible at right side of body), LEFT arm swinging forward, RIGHT arm back. Seen from behind.",
+        "legs passing through center together, arms close to sides. Seen from behind.",
+        "stepping with the LEFT foot forward (visible at left side of body), RIGHT arm swinging forward, LEFT arm back. Seen from behind.",
+        "legs passing through center together, arms close to sides. Seen from behind.",
+    ],
+    "side": [
+        "FAR leg (rear) striding forward, NEAR leg planted back, FAR arm forward, NEAR arm back. Side profile facing left.",
+        "legs together passing through center, arms close to sides. Side profile facing left.",
+        "NEAR leg (front) striding forward, FAR leg planted back, NEAR arm forward, FAR arm back. Side profile facing left.",
+        "legs together passing through center, arms close to sides. Side profile facing left.",
+    ],
 }
 
 
@@ -55,21 +77,29 @@ class CharacterImageryAgent(BaseAgent):
                 poses[view] = pose_bytes
                 _log(f"[{char_id}]   {view} pose OK")
 
-            # Phase 2: Generate walk strips using poses as references
-            _log(f"[{char_id}] Phase 2: Generating walk strips...")
+            # Phase 2: Generate each walk frame individually (more reliable than strips)
+            _log(f"[{char_id}] Phase 2: Generating walk frames ({SPRITE_WALK_FRAMES} per view)...")
             strips = {}
             for view in ["front", "back", "side"]:
-                _log(f"[{char_id}]   Generating {view} walk strip...")
-                strip_bytes = self._generate_walk_strip(view, description, visual_style, poses[view])
-                if not strip_bytes:
-                    self._result_queue.put(("error", char_id, f"Failed to generate {view} walk strip"))
-                    return
-                frames = self._process_strip(strip_bytes, f"{char_id}_{view}")
-                if not frames:
-                    self._result_queue.put(("error", char_id, f"Failed to process {view} strip"))
-                    return
-                strips[view] = frames
-                _log(f"[{char_id}]   {view} strip processed ({len(frames)} frames)")
+                view_frames = []
+                for frame_idx in range(SPRITE_WALK_FRAMES):
+                    _log(f"[{char_id}]   Generating {view} frame {frame_idx + 1}/{SPRITE_WALK_FRAMES}...")
+                    frame_bytes = self._generate_walk_frame(
+                        view, frame_idx, description, visual_style, poses[view]
+                    )
+                    if not frame_bytes:
+                        self._result_queue.put(("error", char_id, f"Failed to generate {view} frame {frame_idx}"))
+                        return
+                    processed = self._process_frame(frame_bytes, f"{char_id}_{view}_{frame_idx}")
+                    if not processed:
+                        # Fall back to the key pose if a frame fails to process
+                        _log(f"[{char_id}]   {view} frame {frame_idx} processing failed; using key pose fallback")
+                        processed = self._process_frame(poses[view], f"{char_id}_{view}_{frame_idx}_fallback")
+                        if not processed:
+                            processed = Image.new("RGBA", (SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT), (0, 0, 0, 0))
+                    view_frames.append(processed)
+                strips[view] = view_frames
+                _log(f"[{char_id}]   {view} frames complete ({len(view_frames)})")
 
             # Phase 3: Generate portrait
             _log(f"[{char_id}] Phase 3: Generating portrait...")
@@ -122,21 +152,24 @@ class CharacterImageryAgent(BaseAgent):
         )
         return self._call_image(prompt, aspect_ratio="9:16")
 
-    def _generate_walk_strip(self, view, description, visual_style, reference_pose):
+    def _generate_walk_frame(self, view, frame_idx, description, visual_style, reference_pose):
+        pose_description = WALK_POSES[view][frame_idx]
         prompt = (
             f"{visual_style}. "
-            f"Using the reference image as the EXACT character design (same face, same clothing, "
-            f"same proportions, same colors), create a horizontal strip showing "
-            f"{SPRITE_WALK_FRAMES} frames of a smooth walking animation arranged side-by-side. "
-            f"The character in EVERY frame must be IDENTICAL to the reference — "
-            f"only the legs and arms change to show walking motion. "
-            f"The character is {VIEW_DESCRIPTIONS[view]} in every frame. "
-            f"Walk cycle: contact, down, passing, up, contact, down, passing, up. "
-            f"Each frame shows the COMPLETE character from head to feet. "
-            f"The ENTIRE background is solid pure magenta (#FF00FF). "
-            f"No text, no borders, no labels, no frame numbers, no grid lines."
+            f"Using the reference image as the EXACT character design, generate a SINGLE frame "
+            f"of a walking animation. The character must be IDENTICAL to the reference image — "
+            f"same face, same hair, same clothing, same colors, same proportions, same height. "
+            f"\n\nView orientation: the character is {VIEW_DESCRIPTIONS[view]}. "
+            f"This is non-negotiable — do NOT show any other view angle. "
+            f"\n\nPose for this frame: {pose_description} "
+            f"\n\nThe FULL BODY must be visible — from the top of the head to the bottom of the feet. "
+            f"Do NOT crop the head, hands, or feet. Leave a small margin around the character. "
+            f"The character is centered in the image. "
+            f"\n\nThe ENTIRE background is solid pure magenta (#FF00FF, RGB 255,0,255) — "
+            f"uniform color with no gradients, no shadows, no floor, no other colors. "
+            f"No other characters, no objects, no scenery, no text, no labels, no borders."
         )
-        return self._call_image(prompt, reference_images=[reference_pose], aspect_ratio="16:9")
+        return self._call_image(prompt, reference_images=[reference_pose], aspect_ratio="9:16")
 
     def _generate_portrait(self, description, visual_style, reference_pose, extra_guidance=""):
         guidance = extra_guidance + " " if extra_guidance else ""
@@ -191,7 +224,8 @@ class CharacterImageryAgent(BaseAgent):
             _log(f"  Consistency check failed: {e}, assuming consistent")
             return True
 
-    def _process_strip(self, image_bytes, debug_name=None):
+    def _process_frame(self, image_bytes, debug_name=None):
+        """Chroma key a single full-figure image, tight-crop, scale to frame size."""
         img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         arr = np.array(img)
         h, w = arr.shape[:2]
@@ -211,7 +245,7 @@ class CharacterImageryAgent(BaseAgent):
         ])
         bg = np.median(corner_pixels, axis=0).astype(int)
 
-        # Chroma key
+        # Chroma key — distance from sampled bg
         r = arr[:, :, 0].astype(int)
         g = arr[:, :, 1].astype(int)
         b = arr[:, :, 2].astype(int)
@@ -223,37 +257,27 @@ class CharacterImageryAgent(BaseAgent):
         if debug_name:
             keyed.save(debug_dir / f"keyed_{debug_name}.png", "PNG")
 
-        # Slice into N equal columns
+        bbox = keyed.getbbox()
+        if not bbox:
+            _log(f"  No content after chroma key for {debug_name}")
+            return None
+
+        cropped = keyed.crop(bbox)
+
         target_w, target_h = SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT
-        slice_w = w // SPRITE_WALK_FRAMES
-        frames = []
-        for i in range(SPRITE_WALK_FRAMES):
-            slice_img = keyed.crop((i * slice_w, 0, (i + 1) * slice_w, h))
-            bbox = slice_img.getbbox()
-            if not bbox:
-                if frames:
-                    frames.append(frames[-1].copy())
-                else:
-                    frames.append(Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0)))
-                continue
-            cropped = slice_img.crop(bbox)
+        scale = min(target_w / cropped.width, target_h / cropped.height)
+        new_w = max(1, int(cropped.width * scale))
+        new_h = max(1, int(cropped.height * scale))
+        resized = cropped.resize((new_w, new_h), Image.LANCZOS)
 
-            scale = min(target_w / cropped.width, target_h / cropped.height)
-            new_w = max(1, int(cropped.width * scale))
-            new_h = max(1, int(cropped.height * scale))
-            resized = cropped.resize((new_w, new_h), Image.LANCZOS)
-
-            canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-            canvas.paste(resized, ((target_w - new_w) // 2, target_h - new_h), resized)
-            frames.append(canvas)
+        canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        # Bottom-center anchor so feet line up across all frames
+        canvas.paste(resized, ((target_w - new_w) // 2, target_h - new_h), resized)
 
         if debug_name:
-            strip = Image.new("RGBA", (target_w * SPRITE_WALK_FRAMES, target_h), (0, 0, 0, 0))
-            for i, f in enumerate(frames):
-                strip.paste(f, (i * target_w, 0), f)
-            strip.save(debug_dir / f"final_{debug_name}.png", "PNG")
+            canvas.save(debug_dir / f"final_{debug_name}.png", "PNG")
 
-        return frames
+        return canvas
 
     def _composite_sheet(self, view_strips):
         fw, fh = SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT
