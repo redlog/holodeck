@@ -155,6 +155,9 @@ def new_game():
             "visual_style": "",
         },
         "dm_instructions": {
+            "premise": "",
+            "starting_location_concept": "",
+            "interview_summary": "",
             "plot_seeds": [],
             "hard_constraints": [],
             "world_rules": [],

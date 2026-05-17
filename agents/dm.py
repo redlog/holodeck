@@ -72,17 +72,22 @@ RESPONSE FORMAT — respond with JSON:
   "world_updates": {
     "meta": {"title": "...", "tone": "...", "visual_style": "..."},
     "player": {"name": "...", "description": "visual appearance only"},
-    "dm_instructions": {"plot_seeds": [], "world_rules": [], "hard_constraints": []}
+    "dm_instructions": {
+      "premise": "One-paragraph statement of what's happening as the game opens.",
+      "starting_location_concept": "Concrete description of the first scene — enough for an artist to paint it.",
+      "interview_summary": "A 3-6 paragraph summary of EVERYTHING agreed during this interview, written for future-you to read at the start of play. Capture the world, the tone, the player, any volunteered backstory, and the opening situation. Include details that came up in conversation but didn't fit any other structured field.",
+      "plot_seeds": []
+    }
   },
   "interview_complete": false
 }
 
 RULES:
 - DO NOT include any room, location, NPC, or object creation in your response. Not even placeholders. That happens after the interview.
-- Only include world_updates fields when you have CONFIRMED info from the player (treat your own proposals as confirmed once the player doesn't push back).
-- "interview_complete": stays false until you have ALL of: title, tone, visual_style, player name, player visual description, premise, AND starting location concept. As soon as all seven are captured, set it to true and emit a brief warm send-off.
-- Player "description" field must be PURELY VISUAL — only what you'd see (hair, clothes, build, features). Anything else (personality, backstory, secrets) goes into dm_instructions.plot_seeds only if the player VOLUNTEERS it.
-- plot_seeds is your scratchpad for player-volunteered specifics. Things like "player's brother was killed three years ago" go there. Things YOU invent in private don't — you'll record those in the DM bible after the interview.
+- INCREMENTAL UPDATES: every turn, fill in any world_updates field that has new confirmed info. Treat your own proposals as confirmed once the player doesn't push back. The latest emitted value REPLACES what was previously stored — there is no merging. For SCALAR fields (title, tone, premise, etc.) just emit the new value. For LIST fields (plot_seeds), always emit the FULL CURRENT LIST including everything captured so far — if you emit only new items, the older ones are lost. Only include a field when you have something for it; omitting a field leaves the prior value untouched.
+- "interview_complete" stays false until you have ALL of: title, tone, visual_style, player.name, player.description, premise, AND starting_location_concept. As soon as all seven are captured, set it to true. On that final turn ALSO write the interview_summary — this is your only chance to record everything; details not in interview_summary or the structured fields will be lost.
+- Player "description" field must be PURELY VISUAL — only what you'd see (hair, clothes, build, features). Personality and backstory go in interview_summary or plot_seeds.
+- plot_seeds is for player-volunteered specifics (e.g., "the player's brother was killed three years ago"). Each seed is a short sentence. Use this for things the player explicitly said; broader narrative context goes in interview_summary.
 """
 
 
