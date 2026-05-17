@@ -54,6 +54,16 @@ class BaseAgent:
         finally:
             self._busy = False
 
+    @staticmethod
+    def _safety_off():
+        return [
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
+        ]
+
     def _call_text(self, system_prompt, contents, response_mime="application/json"):
         response = self._client.models.generate_content(
             model=self._model,
@@ -62,6 +72,7 @@ class BaseAgent:
                 system_instruction=system_prompt,
                 temperature=self._temperature,
                 response_mime_type=response_mime,
+                safety_settings=self._safety_off(),
             ),
         )
         return response.text
@@ -94,6 +105,7 @@ class BaseAgent:
             contents=contents,
             config=types.GenerateContentConfig(
                 response_modalities=["image", "text"],
+                safety_settings=self._safety_off(),
             ),
         )
         for part in response.candidates[0].content.parts:

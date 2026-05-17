@@ -280,6 +280,7 @@ class CharacterImageryAgent(BaseAgent):
                 config=types.GenerateContentConfig(
                     temperature=0.2,
                     response_mime_type="application/json",
+                    safety_settings=self._safety_off(),
                 ),
             )
             result = json.loads(response.text)

@@ -142,6 +142,7 @@ class SceneryAgent(BaseAgent):
                 contents=contents,
                 config=types.GenerateContentConfig(
                     response_modalities=["image", "text"],
+                    safety_settings=self._safety_off(),
                 ),
             )
 
