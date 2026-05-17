@@ -1,3 +1,5 @@
+import codecs
+import copy
 import json
 import os
 import re
@@ -5,6 +7,57 @@ from datetime import datetime
 from pathlib import Path
 
 GAMES_DIR = Path(__file__).parent.parent / "games"
+
+# Marker placed on saved files once their secret fields have been ROT13'd.
+# Saves WITHOUT this flag are treated as plaintext (backwards-compat with
+# pre-obfuscation autosaves).
+OBFUSCATED_FLAG = "_secrets_obfuscated_v1"
+
+
+def _rot13(s):
+    if not isinstance(s, str):
+        return s
+    return codecs.encode(s, "rot_13")
+
+
+def _transform_secrets(ws):
+    """Apply ROT13 to fields that would spoil the game if read casually.
+
+    ROT13 is self-inverse, so the same function obfuscates on save and
+    deobfuscates on load. Operates IN PLACE on the passed dict — callers
+    that need to preserve the original should pass a deep copy.
+    """
+    bible = ws.get("dm_bible")
+    if isinstance(bible, dict):
+        for secret in bible.get("secrets") or []:
+            if isinstance(secret, dict) and isinstance(secret.get("fact"), str):
+                secret["fact"] = _rot13(secret["fact"])
+        if isinstance(bible.get("planned_beats"), list):
+            bible["planned_beats"] = [_rot13(b) for b in bible["planned_beats"]]
+        if isinstance(bible.get("scratchpad"), str):
+            bible["scratchpad"] = _rot13(bible["scratchpad"])
+
+    # Plot threads the player doesn't yet know about
+    for thread in ws.get("plot_threads") or []:
+        if isinstance(thread, dict) and not thread.get("known_to_player", True):
+            if isinstance(thread.get("summary"), str):
+                thread["summary"] = _rot13(thread["summary"])
+    return ws
+
+
+def _obfuscate_for_save(ws):
+    """Return a deep copy of ws with secret fields ROT13'd and the flag set."""
+    out = copy.deepcopy(ws)
+    _transform_secrets(out)
+    out[OBFUSCATED_FLAG] = True
+    return out
+
+
+def _deobfuscate_after_load(ws):
+    """If the loaded state is marked obfuscated, decode in place and drop flag."""
+    if ws.pop(OBFUSCATED_FLAG, False):
+        _transform_secrets(ws)
+    return ws
 
 
 def _game_dir(game_slug):
@@ -81,9 +134,12 @@ def save_game(world_state, game_slug, slot="autosave"):
         save_dir.mkdir(parents=True, exist_ok=True)
         filename = save_dir / f"{slot}.json"
 
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    to_write = _obfuscate_for_save(world_state)
+
     temp = filename.with_suffix(".json.tmp")
     with open(temp, "w", encoding="utf-8") as f:
-        json.dump(world_state, f, indent=2, ensure_ascii=False)
+        json.dump(to_write, f, indent=2, ensure_ascii=False)
     os.replace(temp, filename)
 
 
@@ -95,7 +151,8 @@ def load_game(game_slug, slot="autosave"):
     if not filename.exists():
         return None
     with open(filename, "r", encoding="utf-8") as f:
-        return json.load(f)
+        ws = json.load(f)
+    return _deobfuscate_after_load(ws)
 
 
 def get_save_slots(game_slug):
