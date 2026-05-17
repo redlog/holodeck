@@ -97,17 +97,22 @@ class SetupMode:
         self.done = False
         self.quit_requested = False
 
-        # Kick off the interview greeting
-        if self.dm.connected and self.dm.phase == self.dm.PHASE_INTERVIEW:
+        # Kick off whatever's next based on what's already been done
+        if not self.dm.connected:
+            self._add_lines("system",
+                            "DM not connected. Set GEMINI_API_KEY in .env and restart.")
+        elif self.dm.phase == self.dm.PHASE_INTERVIEW:
             self._waiting = True
             self._opening_sent = True
             self.console_lines.append(("system", "..."))
             self.dm.start_interview()
-        elif not self.dm.connected:
-            self._add_lines("system",
-                            "DM not connected. Set GEMINI_API_KEY in .env and restart.")
+        elif self.dm.phase == self.dm.PHASE_CREATING:
+            # Resuming a save where interview is done but creation never ran
+            self._add_lines("system", "Preparing the world...")
+            self._waiting = True
+            self.dm.start_creation()
         else:
-            # Already past interview — show that immediately
+            # PHASE_PLAY — world already fully seeded
             self._add_lines("system",
                             "Setup is already complete. Press Enter to begin your adventure.")
 
@@ -271,6 +276,11 @@ class SetupMode:
         self.dm.send_message(text)
 
     def _handle_dm_response(self, response):
+        # Creation result has a different shape — route separately.
+        if "creation_complete" in response:
+            self._handle_creation_response(response)
+            return
+
         # Remove the "..." placeholder if it's the last line
         if self.console_lines and self.console_lines[-1] == ("system", "..."):
             self.console_lines.pop()
@@ -279,14 +289,42 @@ class SetupMode:
         self._add_lines("dm", response_text)
 
         # Persist to disk after every response
+        self._autosave()
+
+        # Scroll to bottom on new response
+        self._scroll_offset = 0
+
+        # If the interview just completed, the DM has transitioned to
+        # CREATING. Auto-kick the creation pass; nothing for the player to
+        # do during this beat.
+        if self.dm.phase == self.dm.PHASE_CREATING:
+            self._add_lines("system", "Preparing the world...")
+            self._waiting = True
+            self.dm.start_creation()
+
+    def _handle_creation_response(self, response):
+        self._waiting = False
+        if response.get("creation_complete"):
+            loc_count = response.get("location_count", 0)
+            npc_count = response.get("npc_count", 0)
+            secret_count = response.get("secret_count", 0)
+            thread_count = response.get("thread_count", 0)
+            self._add_lines(
+                "system",
+                f"World ready — {loc_count} location, {npc_count} NPC(s), "
+                f"{secret_count} secrets, {thread_count} plot threads."
+            )
+            self._autosave()
+        else:
+            err = response.get("error", "unknown error")
+            self._add_lines("system", f"World creation failed: {err}")
+
+    def _autosave(self):
         from world.bible import save_game
         try:
             save_game(self.world_state, self._slug)
         except Exception as e:
             _log(f"autosave failed: {e}")
-
-        # Scroll to bottom on new response
-        self._scroll_offset = 0
 
     # ------------------------------------------------------------------ #
     # Helpers
