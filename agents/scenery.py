@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from config import GEMINI_IMAGE_MODEL, INTERNAL_WIDTH, INTERNAL_HEIGHT
+from config import GEMINI_IMAGE_MODEL
 
 
 def _log(msg):
@@ -25,9 +25,9 @@ A painted background for a graphical text adventure game. Paint this scene:
 
 {scene}
 
-The image is 16:10 widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Treat the camera as a fixed three-quarter overhead view typical of point-and-click adventure games.
+The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Treat the camera as a fixed three-quarter overhead view typical of point-and-click adventure games.
 
-Render the entire frame with care — every region should be finished painted artwork.
+Render the entire frame with care — every region should be finished painted artwork edge to edge. Do NOT add letterbox bars, vignettes, or framing borders.
 """
 
 
@@ -59,7 +59,7 @@ class SceneryAgent(BaseAgent):
                 visual_style=visual_style or "painterly adventure-game art",
                 scene=scene,
             )
-            image_bytes = self._call_image(prompt, aspect_ratio="16:10")
+            image_bytes = self._call_image(prompt, aspect_ratio="16:9")
             if not image_bytes:
                 self._result_queue.put(("error", location_id, "Image model returned nothing"))
                 return
@@ -77,11 +77,10 @@ class SceneryAgent(BaseAgent):
             self._pending.pop(location_id, None)
 
     def _save_room(self, location_id, image_bytes):
+        """Save at native 16:9 dimensions; PlayMode handles crop/fit at render."""
         path = self._cache_dir / "rooms" / f"{location_id}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        img = Image.open(io.BytesIO(image_bytes))
-        img = img.resize((INTERNAL_WIDTH, INTERNAL_HEIGHT), Image.LANCZOS)
-        img = img.convert("RGB")
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img.save(path, "PNG")
         return path

@@ -153,9 +153,26 @@ class PlayMode:
 
         if path and path != self._room_loaded_path:
             try:
-                img = pygame.image.load(path)
-                img = pygame.transform.smoothscale(img, (ROOM_IMAGE_RECT.width, ROOM_IMAGE_RECT.height))
-                self._room_surface = img.convert()
+                img = pygame.image.load(path).convert()
+                # Fit to the room rect by width, preserving aspect, then crop
+                # the vertical center so we don't stretch the painting.
+                sw, sh = img.get_size()
+                target_w = ROOM_IMAGE_RECT.width
+                scale = target_w / sw
+                scaled_h = int(sh * scale)
+                scaled = pygame.transform.smoothscale(img, (target_w, scaled_h))
+                if scaled_h >= ROOM_IMAGE_RECT.height:
+                    # Crop center band
+                    y_off = (scaled_h - ROOM_IMAGE_RECT.height) // 2
+                    self._room_surface = scaled.subsurface(
+                        pygame.Rect(0, y_off, target_w, ROOM_IMAGE_RECT.height)
+                    ).copy()
+                else:
+                    # Image is shorter than the slot (rare); letterbox vertically
+                    canvas = pygame.Surface((target_w, ROOM_IMAGE_RECT.height))
+                    canvas.fill(COLOR_BG)
+                    canvas.blit(scaled, (0, (ROOM_IMAGE_RECT.height - scaled_h) // 2))
+                    self._room_surface = canvas
                 self._room_loaded_path = path
             except Exception as e:
                 _log(f"failed to load room image {path}: {e}")
