@@ -80,7 +80,7 @@ def run_game(screen, window, clock, game_slug, world_state):
     play_mode = PlayMode(screen, world_state, image_gen, game_slug,
                          scenery_agent=scenery, character_agent=character)
     holodeck_mode = HolodeckMode(screen, world_state, author=author, scenery=scenery,
-                                  character=character, image_gen=image_gen)
+                                  character=character, image_gen=image_gen, game_slug=game_slug)
     save_load_ui = SaveLoadUI(screen)
 
     title = world_state.get("meta", {}).get("title", "The Holodeck")
@@ -144,7 +144,7 @@ def run_game(screen, window, clock, game_slug, world_state):
                          scenery_agent=scenery, character_agent=character)
                             holodeck_mode = HolodeckMode(screen, world_state, author=author,
                                                          scenery=scenery, character=character,
-                                                         image_gen=image_gen)
+                                                         image_gen=image_gen, game_slug=game_slug)
                             holodeck_mode.console_lines.append(
                                 ("system", f"Game loaded from '{slot}'.")
                             )

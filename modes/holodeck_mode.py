@@ -7,9 +7,10 @@ from rendering.ui import TextInput, get_font
 
 class HolodeckMode:
     def __init__(self, surface, world_state, author=None, scenery=None, character=None,
-                 dm=None, image_gen=None):
+                 dm=None, image_gen=None, game_slug=None):
         self.surface = surface
         self.world_state = world_state
+        self._game_slug = game_slug
         self.author = author
         self.scenery = scenery
         self.character = character
@@ -136,6 +137,10 @@ class HolodeckMode:
             self.author.apply_response(response)
         elif self.dm:
             self.dm.apply_response(response)
+
+        if self._game_slug:
+            from world.bible import save_game
+            save_game(self.world_state, self._game_slug, "autosave")
 
         # Don't trigger any imagery/scenery generation while in interview phase
         in_interview = self.author and getattr(self.author, "phase", None) == "interview"
