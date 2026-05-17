@@ -205,13 +205,23 @@ class CharacterImageryAgent(BaseAgent):
     def _slice_strip(self, strip_bytes, debug_name=None):
         img = Image.open(io.BytesIO(strip_bytes)).convert("RGBA")
         arr = np.array(img)
+        h, w = arr.shape[:2]
 
         debug_dir = self._cache_dir / "_debug"
         if debug_name:
             debug_dir.mkdir(parents=True, exist_ok=True)
             img.save(debug_dir / f"raw_strip_{debug_name}.png", "PNG")
 
-        w = img.width
+        # Sample background color from the FULL strip corners (reliable, figures won't be here)
+        corner = max(4, min(20, min(h, w) // 20))
+        corner_pixels = np.concatenate([
+            arr[:corner, :corner, :3].reshape(-1, 3),
+            arr[:corner, -corner:, :3].reshape(-1, 3),
+            arr[-corner:, :corner, :3].reshape(-1, 3),
+            arr[-corner:, -corner:, :3].reshape(-1, 3),
+        ])
+        bg_color = np.median(corner_pixels, axis=0).astype(int)
+
         col_w = w // SPRITE_WALK_FRAMES
         frames = []
         for i in range(SPRITE_WALK_FRAMES):
@@ -221,7 +231,7 @@ class CharacterImageryAgent(BaseAgent):
 
             col_bytes = io.BytesIO()
             col_img.save(col_bytes, "PNG")
-            processed = self._process_frame(col_bytes.getvalue(), f"{debug_name}_{i}" if debug_name else None)
+            processed = self._process_frame(col_bytes.getvalue(), f"{debug_name}_{i}" if debug_name else None, bg_override=bg_color)
             if not processed:
                 processed = Image.new("RGBA", (SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT), (0, 0, 0, 0))
             frames.append(processed)
@@ -280,7 +290,7 @@ class CharacterImageryAgent(BaseAgent):
             _log(f"  Consistency check failed: {e}, assuming consistent")
             return True
 
-    def _process_frame(self, image_bytes, debug_name=None):
+    def _process_frame(self, image_bytes, debug_name=None, bg_override=None):
         """Chroma key a single full-figure image, tight-crop, scale to frame size."""
         img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         arr = np.array(img)
@@ -291,15 +301,17 @@ class CharacterImageryAgent(BaseAgent):
             debug_dir.mkdir(parents=True, exist_ok=True)
             img.save(debug_dir / f"raw_{debug_name}.png", "PNG")
 
-        # Sample background color from corners
-        corner = max(4, min(20, min(h, w) // 20))
-        corner_pixels = np.concatenate([
-            arr[:corner, :corner, :3].reshape(-1, 3),
-            arr[:corner, -corner:, :3].reshape(-1, 3),
-            arr[-corner:, :corner, :3].reshape(-1, 3),
-            arr[-corner:, -corner:, :3].reshape(-1, 3),
-        ])
-        bg = np.median(corner_pixels, axis=0).astype(int)
+        if bg_override is not None:
+            bg = np.asarray(bg_override, dtype=int)
+        else:
+            corner = max(4, min(20, min(h, w) // 20))
+            corner_pixels = np.concatenate([
+                arr[:corner, :corner, :3].reshape(-1, 3),
+                arr[:corner, -corner:, :3].reshape(-1, 3),
+                arr[-corner:, :corner, :3].reshape(-1, 3),
+                arr[-corner:, -corner:, :3].reshape(-1, 3),
+            ])
+            bg = np.median(corner_pixels, axis=0).astype(int)
 
         # Chroma key — distance from sampled bg
         r = arr[:, :, 0].astype(int)
