@@ -78,8 +78,8 @@ class BaseAgent:
         return response.text
 
     def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9"):
-        from config import GEMINI_SCENERY_MODEL
-        image_model = self._model if self._model.startswith("gemini") else GEMINI_SCENERY_MODEL
+        from config import GEMINI_IMAGE_MODEL
+        image_model = self._model if self._model.startswith("gemini") else GEMINI_IMAGE_MODEL
 
         if image_model.startswith("imagen"):
             response = self._client.models.generate_images(

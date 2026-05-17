@@ -20,7 +20,10 @@ from world.bible import (
 from rendering.game_menu import GameMenu
 from rendering.ui import get_font
 from agents.dm import DungeonMaster
+from agents.character_imagery import CharacterImageryAgent
+from agents.scenery import SceneryAgent
 from modes.setup_mode import SetupMode
+from modes.play_mode import PlayMode
 
 
 def _flip(screen, window):
@@ -67,66 +70,79 @@ def run_menu(screen, window, clock):
         _flip(screen, window)
 
 
-def run_setup(screen, window, clock, game_slug, world_state):
+def _collect_events(raw_events):
+    """Translate raw pygame events to internal-coord events. Returns (events, quit)."""
+    events = []
+    for event in raw_events:
+        if event.type == pygame.QUIT:
+            return events, True
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+        elif event.type == pygame.MOUSEBUTTONUP:
+            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+        elif event.type == pygame.MOUSEMOTION:
+            event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
+                                       rel=event.rel, buttons=event.buttons)
+        events.append(event)
+    return events, False
+
+
+def run_setup(screen, window, clock, game_slug, world_state, dm,
+              portrait_agent, scenery_agent):
     """Run the setup-mode conversation. Returns (keep_running, completed):
        keep_running=False on window close, completed=True if the player
        finished setup and wants to begin play."""
-    dm = DungeonMaster(world_state)
-    setup = SetupMode(screen, world_state, dm, game_slug)
+    setup = SetupMode(screen, world_state, dm, game_slug,
+                      portrait_agent=portrait_agent, scenery_agent=scenery_agent)
 
     while not setup.done:
         dt = clock.tick(60)
-        raw_events = pygame.event.get()
-        events = []
-        for event in raw_events:
-            if event.type == pygame.QUIT:
-                return False, False
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                return True, False
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
-            elif event.type == pygame.MOUSEBUTTONUP:
-                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
-            elif event.type == pygame.MOUSEMOTION:
-                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
-                                           rel=event.rel, buttons=event.buttons)
-            events.append(event)
+        events, quit_requested = _collect_events(pygame.event.get())
+        if quit_requested:
+            return False, False
 
-        setup.update(dt, events)
+        # Allow Esc to bail back to menu without completing setup
+        filtered = []
+        bail = False
+        for event in events:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                bail = True
+                break
+            filtered.append(event)
+        if bail:
+            return True, False
+
+        setup.update(dt, filtered)
         setup.render()
         _flip(screen, window)
 
     return True, True
 
 
-def run_play_placeholder(screen, window, clock, world_state):
-    """Temporary screen after setup completes. Play mode goes here next."""
-    font = get_font()
-    title = world_state.get("meta", {}).get("title") or "Adventure"
-
-    lines = [
-        f"→  {title}",
-        "",
-        "Play mode is under construction.",
-        "See design/text_adventure_design.md.",
-        "",
-        "Press any key to return to the menu.",
-    ]
+def run_play(screen, window, clock, game_slug, world_state, dm,
+             portrait_agent, scenery_agent):
+    """Run the play-mode loop. Returns keep_running."""
+    play = PlayMode(screen, world_state, dm, game_slug,
+                    portrait_agent=portrait_agent, scenery_agent=scenery_agent)
 
     while True:
-        clock.tick(60)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False
-            if event.type == pygame.KEYDOWN:
-                return True
+        dt = clock.tick(60)
+        events, quit_requested = _collect_events(pygame.event.get())
+        if quit_requested:
+            return False
 
-        screen.fill((20, 20, 30))
-        y = INTERNAL_HEIGHT // 2 - (len(lines) * 22) // 2
-        for line in lines:
-            surf = font.render(line, True, (220, 220, 220))
-            screen.blit(surf, ((INTERNAL_WIDTH - surf.get_width()) // 2, y))
-            y += 22
+        filtered = []
+        bail = False
+        for event in events:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                bail = True
+                break
+            filtered.append(event)
+        if bail:
+            return True
+
+        play.update(dt, filtered)
+        play.render()
         _flip(screen, window)
 
 
@@ -149,18 +165,28 @@ def main():
         pygame.display.set_caption(f"The Holodeck — {title}")
 
         # Ensure the game dir exists so saves work later.
-        get_game_dir(game_slug)
+        cache_dir = get_game_dir(game_slug)
 
-        keep_running, completed = run_setup(screen, window, clock, game_slug, world_state)
-        save_game(world_state, game_slug, "autosave")
-        if not keep_running:
-            break
+        # One set of agents per game session, shared between setup and play.
+        dm = DungeonMaster(world_state)
+        portrait_agent = CharacterImageryAgent(cache_dir)
+        scenery_agent = SceneryAgent(cache_dir)
 
-        if completed:
-            keep_running = run_play_placeholder(screen, window, clock, world_state)
+        if dm.phase != dm.PHASE_PLAY:
+            keep_running, completed = run_setup(screen, window, clock, game_slug,
+                                                world_state, dm, portrait_agent, scenery_agent)
             save_game(world_state, game_slug, "autosave")
             if not keep_running:
                 break
+            if not completed:
+                pygame.display.set_caption("The Holodeck")
+                continue
+
+        keep_running = run_play(screen, window, clock, game_slug, world_state,
+                                dm, portrait_agent, scenery_agent)
+        save_game(world_state, game_slug, "autosave")
+        if not keep_running:
+            break
 
         pygame.display.set_caption("The Holodeck")
 

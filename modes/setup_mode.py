@@ -60,11 +60,14 @@ TEXT_PADDING_X = 20
 
 
 class SetupMode:
-    def __init__(self, surface, world_state, dm, game_slug):
+    def __init__(self, surface, world_state, dm, game_slug,
+                 portrait_agent=None, scenery_agent=None):
         self.surface = surface
         self.world_state = world_state
         self.dm = dm
         self._slug = game_slug
+        self._portrait_agent = portrait_agent
+        self._scenery_agent = scenery_agent
 
         self.font = get_font()
         self.font_small = get_font(14)
@@ -139,6 +142,9 @@ class SetupMode:
             if response:
                 self._waiting = False
                 self._handle_dm_response(response)
+
+        # Always poll image jobs — they run async after creation completes.
+        self._poll_imagery()
 
     def render(self):
         self.surface.fill(COLOR_BG)
@@ -315,9 +321,36 @@ class SetupMode:
                 f"{secret_count} secrets, {thread_count} plot threads."
             )
             self._autosave()
+            self._kick_imagery()
         else:
             err = response.get("error", "unknown error")
             self._add_lines("system", f"World creation failed: {err}")
+
+    def _kick_imagery(self):
+        """Fire portrait + starting-room paint jobs in the background."""
+        visual_style = self.world_state.get("meta", {}).get("visual_style", "")
+
+        # Player portrait
+        if self._portrait_agent:
+            player = self.world_state.get("player", {})
+            if player.get("description") and not player.get("portrait_path"):
+                self._portrait_agent.generate_portrait(
+                    "player",
+                    {"name": player.get("name", "player"),
+                     "description": player["description"]},
+                    visual_style,
+                )
+                self._add_lines("system", "Painting your portrait...")
+
+        # Starting room background
+        if self._scenery_agent:
+            loc_id = self.world_state.get("current_location_id")
+            if loc_id:
+                loc = self.world_state.get("locations", {}).get(loc_id, {})
+                if loc and not loc.get("image_path"):
+                    self._scenery_agent.generate_room(loc_id, loc, visual_style)
+                    self._add_lines("system",
+                                    f"Painting {loc.get('name', loc_id)}...")
 
     def _autosave(self):
         from world.bible import save_game
@@ -325,6 +358,53 @@ class SetupMode:
             save_game(self.world_state, self._slug)
         except Exception as e:
             _log(f"autosave failed: {e}")
+
+    def _poll_imagery(self):
+        """Pick up completed portrait/scenery jobs and update world_state."""
+        changed = False
+
+        if self._portrait_agent:
+            r = self._portrait_agent.poll_result()
+            if r is not None:
+                changed = self._apply_imagery_result(r, kind="portrait") or changed
+
+        if self._scenery_agent:
+            r = self._scenery_agent.poll_result()
+            if r is not None:
+                changed = self._apply_imagery_result(r, kind="room") or changed
+
+        if changed:
+            self._autosave()
+
+    def _apply_imagery_result(self, result, kind):
+        if not isinstance(result, tuple) or len(result) != 3:
+            return False
+        tag, target_id, payload = result
+        if tag == "error":
+            self._add_lines("system", f"[image error: {kind} {target_id}: {payload}]")
+            return False
+
+        if kind == "portrait" and tag == "portrait_complete":
+            path = payload.get("portrait_path")
+            if target_id == "player":
+                self.world_state.setdefault("player", {})["portrait_path"] = path
+            else:
+                npc = self.world_state.get("npcs", {}).get(target_id)
+                if npc:
+                    npc["portrait_path"] = path
+            self._add_lines("system", f"Portrait ready ({target_id}).")
+            return True
+
+        if kind == "room" and tag == "room_complete":
+            path = payload.get("image_path")
+            loc = self.world_state.get("locations", {}).get(target_id)
+            if loc:
+                loc["image_path"] = path
+                loc["image_dirty"] = False
+            self._add_lines("system", f"Scene painted ({target_id}).")
+            return True
+
+        return False
 
     # ------------------------------------------------------------------ #
     # Helpers

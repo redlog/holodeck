@@ -28,6 +28,10 @@ class CharacterImageryAgent(BaseAgent):
         self._cache_dir = Path(cache_dir)
         self._pending = {}
 
+    @property
+    def pending(self):
+        return bool(self._pending)
+
     def generate_portrait(self, char_id, char_def, visual_style):
         if char_id in self._pending:
             return
