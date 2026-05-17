@@ -1,42 +1,20 @@
+import os
+
+# Display
 INTERNAL_WIDTH = 960
 INTERNAL_HEIGHT = 600
 DISPLAY_SCALE = 2
 
-import os
-GEMINI_DM_MODEL = os.getenv("GEMINI_DM_MODEL", "gemini-2.5-pro")
-GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
-GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
-
-FRAME_DELAY_MS = 150
-PLAYER_SPEED = 1
-AUTOSAVE_ON_ROOM_CHANGE = True
-
-CHROMA_KEY = (0, 255, 0)
-SPRITE_FRAME_WIDTH = 64
-SPRITE_FRAME_HEIGHT = 96
-SPRITE_WALK_FRAMES = 4
-
-HOLODECK_GRID_COLOR = (200, 180, 50)
-HOLODECK_GRID_SPACING = 40
-
+# UI
 FONT_SIZE = 16
 FONT_PATH = None  # Set to a .ttf path for custom pixel font
 
-# Priority Map
-PRIORITY_MAP_WIDTH = 640
-PRIORITY_MAP_HEIGHT = 400
-PRIORITY_BAND_COUNT = 16
-PRIORITY_BLOCK = 0
-PRIORITY_WALKABLE_MIN = 4
-PRIORITY_WALKABLE_MAX = 14
-PRIORITY_FOREGROUND = 15
+# Gameplay
+AUTOSAVE_ON_RESPONSE = True
 
-# Agent models
+# Gemini models — overridable via environment
+GEMINI_DM_MODEL = os.getenv("GEMINI_DM_MODEL", "gemini-2.5-pro")
 GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-pro")
-GEMINI_SCENERY_MODEL = os.getenv("GEMINI_SCENERY_MODEL", "gemini-2.5-flash-image")
-GEMINI_CHARACTER_MODEL = os.getenv("GEMINI_CHARACTER_MODEL", "gemini-2.5-flash-image")
+GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
-
-# Character imagery
-SPRITE_KEY_POSE_SIZE = (256, 384)
-CHARACTER_CONSISTENCY_CHECK = True

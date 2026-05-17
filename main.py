@@ -1,23 +1,24 @@
+"""Holodeck entry point.
+
+Currently shows the game menu (new / load / quit) and, after a selection,
+displays a placeholder while the new text-adventure play loop is being
+built. See design/text_adventure_design.md for the target architecture.
+"""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import pygame
+
 from config import INTERNAL_WIDTH, INTERNAL_HEIGHT, DISPLAY_SCALE
-from modes.play_mode import PlayMode
-from modes.holodeck_mode import HolodeckMode
 from world.bible import (
-    save_game, load_game, get_save_slots, get_game_dir,
+    save_game, load_game, get_game_dir,
     list_games, create_game,
 )
-from rendering.save_load_ui import SaveLoadUI
 from rendering.game_menu import GameMenu
-from dm.dungeon_master import DungeonMaster
-from dm.image_gen import ImageGenerator
-from agents.author import AuthorAgent
-from agents.scenery import SceneryAgent
-from agents.character_imagery import CharacterImageryAgent
+from rendering.ui import get_font
 
 
 def _flip(screen, window):
@@ -33,6 +34,7 @@ def _scale_mouse(pos):
 
 
 def run_menu(screen, window, clock):
+    """Return (game_slug, world_state) the user wants to play, or (None, None) to quit."""
     menu = GameMenu(screen)
     menu.set_games(list_games())
 
@@ -44,17 +46,18 @@ def run_menu(screen, window, clock):
             if event.type == pygame.MOUSEBUTTONDOWN:
                 event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
             elif event.type == pygame.MOUSEMOTION:
-                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos), rel=event.rel, buttons=event.buttons)
+                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
+                                           rel=event.rel, buttons=event.buttons)
             menu.handle_event(event)
 
         if menu.result:
             action, value = menu.result
             if action == "quit":
                 return None, None
-            elif action == "new":
+            if action == "new":
                 slug, world_state = create_game(value)
                 return slug, world_state
-            elif action == "load":
+            if action == "load":
                 world_state = load_game(value)
                 return value, world_state
 
@@ -62,134 +65,35 @@ def run_menu(screen, window, clock):
         _flip(screen, window)
 
 
-def run_game(screen, window, clock, game_slug, world_state):
-    cache_dir = get_game_dir(game_slug)
+def run_placeholder(screen, window, clock, game_slug, world_state):
+    """Temporary screen shown after the menu while play mode is being rebuilt."""
+    font = get_font()
+    title = world_state.get("meta", {}).get("title") or game_slug
 
-    has_world = bool(world_state["player"]["current_room"])
-    current_mode = "holodeck" if not has_world else "play"
+    lines = [
+        f"Loaded: {title}",
+        "",
+        "Play mode is under construction.",
+        "See design/text_adventure_design.md.",
+        "",
+        "Press any key to return to the menu.",
+    ]
 
-    # New multi-agent system
-    author = AuthorAgent(world_state)
-    scenery = SceneryAgent(cache_dir)
-    character = CharacterImageryAgent(cache_dir)
-
-    # Legacy (kept for fallback/compatibility)
-    dm = DungeonMaster(world_state)
-    image_gen = ImageGenerator(cache_dir=cache_dir)
-
-    play_mode = PlayMode(screen, world_state, image_gen, game_slug,
-                         scenery_agent=scenery, character_agent=character)
-    holodeck_mode = HolodeckMode(screen, world_state, author=author, scenery=scenery,
-                                  character=character, image_gen=image_gen, game_slug=game_slug)
-    save_load_ui = SaveLoadUI(screen)
-
-    title = world_state.get("meta", {}).get("title", "The Holodeck")
-    pygame.display.set_caption(f"The Holodeck — {title}")
-
-    running = True
-    while running:
-        dt = clock.tick(60)
-
-        raw_events = pygame.event.get()
-        mode_switch = False
-        filtered_events = []
-
-        # Scale mouse coordinates to internal resolution
-        events = []
-        for event in raw_events:
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
-            elif event.type == pygame.MOUSEBUTTONUP:
-                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
-            elif event.type == pygame.MOUSEMOTION:
-                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos), rel=event.rel, buttons=event.buttons)
-            events.append(event)
-
-        for event in events:
+    while True:
+        clock.tick(60)
+        for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                if save_load_ui.active:
-                    save_load_ui.active = False
-                else:
-                    running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_BACKQUOTE:
-                if not save_load_ui.active:
-                    mode_switch = True
-            else:
-                filtered_events.append(event)
-        events = filtered_events
-
-        # Save/load UI captures all input when active
-        if save_load_ui.active:
-            for event in events:
-                result = save_load_ui.handle_event(event)
-                if result and result != "consumed" and result != "cancelled":
-                    action, slot = result
-                    if action == "save":
-                        save_game(world_state, game_slug, slot)
-                        holodeck_mode.console_lines.append(
-                            ("system", f"Game saved to '{slot}'.")
-                        )
-                    elif action == "load":
-                        loaded = load_game(game_slug, slot)
-                        if loaded:
-                            world_state = loaded
-                            author = AuthorAgent(world_state)
-                            scenery = SceneryAgent(cache_dir)
-                            character = CharacterImageryAgent(cache_dir)
-                            dm = DungeonMaster(world_state)
-                            image_gen = ImageGenerator(cache_dir=cache_dir)
-                            play_mode = PlayMode(screen, world_state, image_gen, game_slug,
-                         scenery_agent=scenery, character_agent=character)
-                            holodeck_mode = HolodeckMode(screen, world_state, author=author,
-                                                         scenery=scenery, character=character,
-                                                         image_gen=image_gen, game_slug=game_slug)
-                            holodeck_mode.console_lines.append(
-                                ("system", f"Game loaded from '{slot}'.")
-                            )
-                            has_world = bool(world_state["player"]["current_room"])
-                            current_mode = "holodeck" if not has_world else "play"
-            events = []
-
-        # Handle F5/F7 from remaining events
-        for event in events[:]:
+                return False
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_F5:
-                    save_load_ui.open_save(get_save_slots(game_slug))
-                    events.remove(event)
-                elif event.key == pygame.K_F7:
-                    save_load_ui.open_load(get_save_slots(game_slug))
-                    events.remove(event)
+                return True
 
-        if mode_switch:
-            current_mode = "holodeck" if current_mode == "play" else "play"
-
-        if holodeck_mode.wants_resume:
-            holodeck_mode.wants_resume = False
-            current_mode = "play"
-
-        screen.fill((0, 0, 0))
-
-        if current_mode == "play":
-            play_mode.update(dt, events)
-            play_mode.render()
-        else:
-            play_mode.update(dt, [])
-            play_mode.render()
-            holodeck_mode.update(dt, events)
-            holodeck_mode.render()
-
-        for note in play_mode.notifications:
-            holodeck_mode.console_lines.append(("system", note))
-        play_mode.notifications.clear()
-
-        save_load_ui.render()
-
+        screen.fill((20, 20, 30))
+        y = INTERNAL_HEIGHT // 2 - (len(lines) * 22) // 2
+        for line in lines:
+            surf = font.render(line, True, (220, 220, 220))
+            screen.blit(surf, ((INTERNAL_WIDTH - surf.get_width()) // 2, y))
+            y += 22
         _flip(screen, window)
-
-    # Autosave on exit
-    save_game(world_state, game_slug, "autosave")
 
 
 def main():
@@ -206,8 +110,18 @@ def main():
         game_slug, world_state = run_menu(screen, window, clock)
         if not game_slug:
             break
-        run_game(screen, window, clock, game_slug, world_state)
+
+        title = world_state.get("meta", {}).get("title", "The Holodeck")
+        pygame.display.set_caption(f"The Holodeck — {title}")
+
+        # Ensure the game dir exists so saves work later.
+        get_game_dir(game_slug)
+
+        keep_running = run_placeholder(screen, window, clock, game_slug, world_state)
+        save_game(world_state, game_slug, "autosave")
         pygame.display.set_caption("The Holodeck")
+        if not keep_running:
+            break
 
     pygame.quit()
 

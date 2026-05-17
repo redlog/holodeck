@@ -36,12 +36,11 @@ def _migrate_if_needed(game_dir):
         os.replace(old_autosave, new_game_file)
 
     if old_cache.exists():
-        for subdir in ("rooms", "sprites", "portraits"):
+        for subdir in ("rooms", "portraits"):
             old_sub = old_cache / subdir
             new_sub = game_dir / subdir
             if old_sub.exists() and not new_sub.exists():
                 old_sub.rename(new_sub)
-        # Clean up empty cache dir
         try:
             old_cache.rmdir()
         except OSError:
@@ -128,7 +127,6 @@ def create_game(title):
     game_dir = _game_dir(slug)
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "rooms").mkdir(exist_ok=True)
-    (game_dir / "sprites").mkdir(exist_ok=True)
     (game_dir / "portraits").mkdir(exist_ok=True)
     (game_dir / "saves").mkdir(exist_ok=True)
 
@@ -139,45 +137,41 @@ def create_game(title):
 
 
 def new_game():
+    """Initial empty world_state for a brand-new game.
+
+    Schema is intentionally minimal; the new DM (see
+    design/text_adventure_design.md) will extend it with locations, npcs,
+    plot_threads, dm_bible, narrative_clock, etc. once the setup
+    conversation completes.
+    """
     return {
         "meta": {
             "title": "Untitled Adventure",
-            "version": "1.0",
+            "version": "2.0",
             "created": datetime.now().isoformat(),
             "last_played": None,
             "last_saved": None,
             "tone": "",
-            "visual_style": "painterly VGA adventure game style, 320x200 aesthetic, 256 color palette, Sierra On-Line SCI engine look",
-            "style_reference_images": []
+            "visual_style": "",
         },
         "dm_instructions": {
             "plot_seeds": [],
             "hard_constraints": [],
-            "pacing": "medium",
-            "difficulty": "medium",
-            "world_rules": []
+            "world_rules": [],
         },
-        "world": {"factions": [], "lore": []},
         "player": {
             "name": None,
             "description": None,
-            "sprite_sheet_path": None,
-            "starting_room": None,
-            "current_room": None,
-            "position": {"x": 480, "y": 400},
-            "facing": "south",
+            "portrait_path": None,
             "inventory": [],
-            "known_facts": [],
-            "reputation": {}
         },
-        "rooms": {},
-        "characters": {},
-        "objects": {},
-        "world_state": {
-            "time_of_day": "morning",
-            "day": 1,
-            "flags": {},
-            "events_occurred": [],
-            "dm_conversation_history": []
-        }
+        "current_location_id": None,
+        "locations": {},
+        "npcs": {},
+        "plot_threads": [],
+        "dm_bible": {
+            "secrets": [],
+            "planned_beats": [],
+            "scratchpad": "",
+        },
     }
