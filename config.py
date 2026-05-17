@@ -2,9 +2,10 @@ INTERNAL_WIDTH = 960
 INTERNAL_HEIGHT = 600
 DISPLAY_SCALE = 2
 
-GEMINI_DM_MODEL = "gemini-2.5-pro"
-GEMINI_NPC_MODEL = "gemini-2.5-pro"
-GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
+import os
+GEMINI_DM_MODEL = os.getenv("GEMINI_DM_MODEL", "gemini-2.5-pro")
+GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 FRAME_DELAY_MS = 150
 PLAYER_SPEED = 1
@@ -31,10 +32,10 @@ PRIORITY_WALKABLE_MAX = 14
 PRIORITY_FOREGROUND = 15
 
 # Agent models
-GEMINI_AUTHOR_MODEL = "gemini-2.5-pro"
-GEMINI_SCENERY_MODEL = "gemini-2.5-flash-image"
-GEMINI_CHARACTER_MODEL = "gemini-2.5-flash-image"
-GEMINI_VISION_MODEL = "gemini-2.5-pro"
+GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-flash")
+GEMINI_SCENERY_MODEL = os.getenv("GEMINI_SCENERY_MODEL", "gemini-2.5-flash-image")
+GEMINI_CHARACTER_MODEL = os.getenv("GEMINI_CHARACTER_MODEL", "gemini-2.5-flash-image")
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
 
 # Character imagery
 SPRITE_KEY_POSE_SIZE = (256, 384)
