@@ -68,6 +68,9 @@ class SetupMode:
 
         self.font = get_font()
         self.font_small = get_font(14)
+        # Measure actual character width (consolas is monospace)
+        self._char_w = self.font.size("M")[0]
+        self._char_w_small = self.font_small.size("M")[0]
 
         # Console state — list of (source, text) lines
         self.console_lines = []
@@ -84,7 +87,8 @@ class SetupMode:
         self._text_panel_top = TEXT_PANEL_Y
         self._text_panel_bottom = input_y - 8
         self._max_visible_lines = (self._text_panel_bottom - self._text_panel_top) // TEXT_LINE_HEIGHT
-        self._wrap_chars = (INTERNAL_WIDTH - TEXT_PADDING_X * 2) // 8  # heuristic for monospace 16px
+        # Leave one char of slack so we don't render right up against the edge
+        self._wrap_chars = (INTERNAL_WIDTH - TEXT_PADDING_X * 2) // self._char_w - 1
 
         # State flags
         self._waiting = False
@@ -198,7 +202,7 @@ class SetupMode:
 
             # Wrap value across one or two lines
             value_str = str(value)
-            available_chars = (INTERNAL_WIDTH - STATUS_X - 130) // 8
+            available_chars = max(20, (INTERNAL_WIDTH - STATUS_X - 130) // self._char_w_small - 1)
             wrapped = textwrap.wrap(value_str, width=available_chars) or [""]
             for i, line in enumerate(wrapped[:2]):
                 # Truncate the second line with an ellipsis if there'd be more
