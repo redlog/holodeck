@@ -250,13 +250,13 @@ class SetupMode:
 
     def _handle_input(self, text):
         text = text.strip()
-        if not text:
-            return
 
-        # If interview is complete, Enter on empty was already filtered above;
-        # any non-empty input is treated as "let's begin" — accept it.
+        # If interview is complete, any Enter (empty or not) begins the game.
         if self.dm.phase == self.dm.PHASE_PLAY:
             self.done = True
+            return
+
+        if not text:
             return
 
         # Busy: queue a system note rather than firing a duplicate request.
