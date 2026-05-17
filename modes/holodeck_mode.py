@@ -353,6 +353,20 @@ class HolodeckMode:
 
         self.text_input.render(self.surface)
 
+        # Scrollbar
+        total = len(self.console_lines)
+        if total > self.max_visible_lines:
+            track_x = INTERNAL_WIDTH - b - 10
+            track_y = self.console_y
+            track_h = self._console_bottom - self.console_y
+            pygame.draw.line(self.surface, (40, 40, 45), (track_x, track_y), (track_x, track_y + track_h), 1)
+
+            thumb_h = max(16, int(track_h * self.max_visible_lines / total))
+            max_scroll = total - self.max_visible_lines
+            scroll_ratio = 1.0 - (self._scroll_offset / max_scroll) if max_scroll > 0 else 1.0
+            thumb_y = track_y + int((track_h - thumb_h) * scroll_ratio)
+            pygame.draw.rect(self.surface, (80, 80, 90), (track_x - 2, thumb_y, 5, thumb_h))
+
     def _line_color(self, source):
         if source == "system":
             return (200, 180, 50)
