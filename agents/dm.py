@@ -1,24 +1,31 @@
-"""Setup-phase Author/DM agent.
+"""DungeonMaster: the single agent that runs both the setup conversation
+and (eventually) play-mode turns.
 
-Conducts the initial conversation that establishes the world: genre, tone,
-player character, opening situation, and the DM's hidden prep notes. Does
-NOT yet handle play-mode dispatch — that's the next thing to build per
-design/text_adventure_design.md. The freeform/creation phases of the old
-spatial-game pipeline have been removed; they'll be replaced by the new DM.
+The same agent persona carries through the whole session. It currently
+operates in two phases:
 
-The interview system prompt below is the surviving heart of months of
-iteration; preserve its constraint structure when expanding.
+  PHASE_INTERVIEW — the setup conversation. Gathers genre, tone, visual
+                    style, player character, premise, starting situation.
+                    Does NOT create world content; that comes after the
+                    interview completes.
+
+  PHASE_PLAY      — turn-based narration. Receives free-text player input,
+                    parses intent, narrates, and emits state diffs.
+                    *** Not yet implemented; see design/text_adventure_design.md ***
+
+The interview prompt and scrubbing logic are the surviving heart of months
+of iteration; preserve their constraint structure when expanding.
 """
 
 import json
 import sys
 
 from agents.base import BaseAgent
-from config import GEMINI_AUTHOR_MODEL
+from config import GEMINI_DM_MODEL
 
 
 def _log(msg):
-    print(f"[AUTHOR] {msg}", file=sys.stderr, flush=True)
+    print(f"[DM] {msg}", file=sys.stderr, flush=True)
 
 
 def _strip_json_fences(text):
@@ -69,22 +76,17 @@ ABSOLUTE RULES (violations make the setup fail):
 """
 
 
-class AuthorAgent(BaseAgent):
-    """Setup-phase conversational agent. Interview only for now.
-
-    When the interview completes, the agent emits `interview_complete: true`
-    in its final response. The new DM (still to be built) will pick up the
-    world state from there.
-    """
+class DungeonMaster(BaseAgent):
+    """The DM. Owns the interview now; will grow to own play turns next."""
 
     PHASE_INTERVIEW = "interview"
-    PHASE_DONE = "done"
+    PHASE_PLAY = "play"
 
     def __init__(self, world_state):
-        super().__init__(model=GEMINI_AUTHOR_MODEL, temperature=0.9)
+        super().__init__(model=GEMINI_DM_MODEL, temperature=0.9)
         self.world_state = world_state
         self._history = []
-        self.phase = self.PHASE_DONE if self._setup_already_complete() else self.PHASE_INTERVIEW
+        self.phase = self.PHASE_PLAY if self._setup_already_complete() else self.PHASE_INTERVIEW
 
     def _setup_already_complete(self):
         meta = self.world_state.get("meta", {})
@@ -97,13 +99,17 @@ class AuthorAgent(BaseAgent):
             and player.get("description")
         )
 
+    # ------------------------------------------------------------------ #
+    # Interview phase
+    # ------------------------------------------------------------------ #
+
     def start_interview(self):
         """Proactively post an opening greeting + first interview question."""
         if self.phase != self.PHASE_INTERVIEW:
             return
         if not self.connected:
             self._result_queue.put({
-                "response_text": "Author Agent not connected. Set GEMINI_API_KEY in .env and restart.",
+                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
             })
             return
         self._run_threaded(self._send_opening)
@@ -128,20 +134,22 @@ class AuthorAgent(BaseAgent):
             })
 
     def send_message(self, user_text):
+        """Player text input. Dispatched to whichever phase we're in."""
         if not self.connected:
             self._result_queue.put({
-                "response_text": "Author Agent not connected. Set GEMINI_API_KEY in .env and restart.",
+                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
             })
             return
-        if self.phase != self.PHASE_INTERVIEW:
-            self._result_queue.put({
-                "response_text": "[Setup is complete; play mode is not yet implemented.]",
-            })
-            return
-        _log(f"Sending: {user_text[:80]}")
-        self._run_threaded(self._process_message, user_text)
+        if self.phase == self.PHASE_INTERVIEW:
+            _log(f"interview send: {user_text[:80]}")
+            self._run_threaded(self._process_interview, user_text)
+        elif self.phase == self.PHASE_PLAY:
+            _log(f"play send: {user_text[:80]}")
+            self._run_threaded(self._process_play_turn, user_text)
+        else:
+            self._result_queue.put({"response_text": f"[Unknown phase: {self.phase}]"})
 
-    def _process_message(self, user_text):
+    def _process_interview(self, user_text):
         try:
             self._history.append({"role": "user", "parts": [{"text": user_text}]})
 
@@ -158,20 +166,20 @@ class AuthorAgent(BaseAgent):
             self._apply_interview_updates(parsed)
 
             if parsed.get("interview_complete") is True:
-                _log("Interview complete. Setup done; waiting on new DM.")
-                self.phase = self.PHASE_DONE
+                _log("Interview complete — transitioning to play phase")
+                self.phase = self.PHASE_PLAY
 
             self._result_queue.put(parsed)
 
         except json.JSONDecodeError:
             _log("JSON parse error")
             self._result_queue.put({
-                "response_text": "[Author could not parse response. Please try rephrasing.]"
+                "response_text": "[DM could not parse response. Please try rephrasing.]"
             })
         except Exception as e:
             _log(f"Error: {e}")
             self._result_queue.put({
-                "response_text": f"[Author error: {str(e)[:200]}]"
+                "response_text": f"[DM error: {str(e)[:200]}]"
             })
 
     def _scrub_interview_response(self, parsed):
@@ -194,3 +202,15 @@ class AuthorAgent(BaseAgent):
             self.world_state.setdefault("player", {}).update(updates["player"])
         if updates.get("dm_instructions"):
             self.world_state.setdefault("dm_instructions", {}).update(updates["dm_instructions"])
+
+    # ------------------------------------------------------------------ #
+    # Play phase (stub — implemented next)
+    # ------------------------------------------------------------------ #
+
+    def _process_play_turn(self, user_text):
+        # TODO: see design/text_adventure_design.md sections "DM agent" and
+        # "Per-turn flow". Intent parse -> resolve -> state diff.
+        self._result_queue.put({
+            "response_text": "[Play mode is under construction. Your message was: "
+                             + user_text[:200] + "]"
+        })

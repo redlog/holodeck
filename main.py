@@ -19,6 +19,8 @@ from world.bible import (
 )
 from rendering.game_menu import GameMenu
 from rendering.ui import get_font
+from agents.dm import DungeonMaster
+from modes.setup_mode import SetupMode
 
 
 def _flip(screen, window):
@@ -65,13 +67,45 @@ def run_menu(screen, window, clock):
         _flip(screen, window)
 
 
-def run_placeholder(screen, window, clock, game_slug, world_state):
-    """Temporary screen shown after the menu while play mode is being rebuilt."""
+def run_setup(screen, window, clock, game_slug, world_state):
+    """Run the setup-mode conversation. Returns (keep_running, completed):
+       keep_running=False on window close, completed=True if the player
+       finished setup and wants to begin play."""
+    dm = DungeonMaster(world_state)
+    setup = SetupMode(screen, world_state, dm, game_slug)
+
+    while not setup.done:
+        dt = clock.tick(60)
+        raw_events = pygame.event.get()
+        events = []
+        for event in raw_events:
+            if event.type == pygame.QUIT:
+                return False, False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return True, False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+            elif event.type == pygame.MOUSEBUTTONUP:
+                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+            elif event.type == pygame.MOUSEMOTION:
+                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
+                                           rel=event.rel, buttons=event.buttons)
+            events.append(event)
+
+        setup.update(dt, events)
+        setup.render()
+        _flip(screen, window)
+
+    return True, True
+
+
+def run_play_placeholder(screen, window, clock, world_state):
+    """Temporary screen after setup completes. Play mode goes here next."""
     font = get_font()
-    title = world_state.get("meta", {}).get("title") or game_slug
+    title = world_state.get("meta", {}).get("title") or "Adventure"
 
     lines = [
-        f"Loaded: {title}",
+        f"→  {title}",
         "",
         "Play mode is under construction.",
         "See design/text_adventure_design.md.",
@@ -117,11 +151,18 @@ def main():
         # Ensure the game dir exists so saves work later.
         get_game_dir(game_slug)
 
-        keep_running = run_placeholder(screen, window, clock, game_slug, world_state)
+        keep_running, completed = run_setup(screen, window, clock, game_slug, world_state)
         save_game(world_state, game_slug, "autosave")
-        pygame.display.set_caption("The Holodeck")
         if not keep_running:
             break
+
+        if completed:
+            keep_running = run_play_placeholder(screen, window, clock, world_state)
+            save_game(world_state, game_slug, "autosave")
+            if not keep_running:
+                break
+
+        pygame.display.set_caption("The Holodeck")
 
     pygame.quit()
 
