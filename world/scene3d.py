@@ -213,14 +213,17 @@ class Scene3D:
         The camera is the same oblique projection used for the priority map,
         so the 3D preview is spatially consistent with the priority map.
         """
-        SKY = (170, 195, 220)
-        FLOOR = (190, 175, 145)
-        FLOOR_EDGE = (110, 95, 70)
-        TOP = (200, 200, 200)
-        FRONT = (140, 140, 145)
+        # All placeholder colors are deliberately drab so an image model
+        # cannot mistake any region for "finished background, leave alone."
+        # Every pixel reads as "this is geometry to paint over."
+        BACKGROUND = (100, 100, 110)   # above-floor area: becomes walls/sky/ceiling
+        FLOOR = (165, 150, 130)        # floor surface
+        FLOOR_EDGE = (90, 80, 60)
+        TOP = (200, 200, 200)          # object top face
+        FRONT = (140, 140, 145)        # object front face
         OUTLINE = (40, 40, 50)
 
-        img = Image.new("RGB", (INTERNAL_WIDTH, INTERNAL_HEIGHT), color=SKY)
+        img = Image.new("RGB", (INTERNAL_WIDTH, INTERNAL_HEIGHT), color=BACKGROUND)
         draw = ImageDraw.Draw(img)
 
         # Floor
