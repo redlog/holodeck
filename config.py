@@ -32,7 +32,7 @@ PRIORITY_WALKABLE_MAX = 14
 PRIORITY_FOREGROUND = 15
 
 # Agent models
-GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-flash")
+GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-pro")
 GEMINI_SCENERY_MODEL = os.getenv("GEMINI_SCENERY_MODEL", "gemini-2.5-flash-image")
 GEMINI_CHARACTER_MODEL = os.getenv("GEMINI_CHARACTER_MODEL", "gemini-2.5-flash-image")
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
