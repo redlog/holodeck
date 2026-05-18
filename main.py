@@ -22,6 +22,7 @@ from rendering.ui import get_font
 from agents.dm import DungeonMaster
 from agents.character_imagery import CharacterImageryAgent
 from agents.scenery import SceneryAgent
+from agents.item_imagery import ItemImageryAgent
 from modes.setup_mode import SetupMode
 from modes.play_mode import PlayMode
 
@@ -120,10 +121,11 @@ def run_setup(screen, window, clock, game_slug, world_state, dm,
 
 
 def run_play(screen, window, clock, game_slug, world_state, dm,
-             portrait_agent, scenery_agent):
+             portrait_agent, scenery_agent, item_agent=None):
     """Run the play-mode loop. Returns keep_running."""
     play = PlayMode(screen, world_state, dm, game_slug,
-                    portrait_agent=portrait_agent, scenery_agent=scenery_agent)
+                    portrait_agent=portrait_agent, scenery_agent=scenery_agent,
+                    item_agent=item_agent)
 
     while True:
         dt = clock.tick(60)
@@ -171,6 +173,7 @@ def main():
         dm = DungeonMaster(world_state)
         portrait_agent = CharacterImageryAgent(cache_dir)
         scenery_agent = SceneryAgent(cache_dir)
+        item_agent = ItemImageryAgent(cache_dir)
 
         if dm.phase != dm.PHASE_PLAY:
             keep_running, completed = run_setup(screen, window, clock, game_slug,
@@ -183,7 +186,7 @@ def main():
                 continue
 
         keep_running = run_play(screen, window, clock, game_slug, world_state,
-                                dm, portrait_agent, scenery_agent)
+                                dm, portrait_agent, scenery_agent, item_agent)
         save_game(world_state, game_slug, "autosave")
         if not keep_running:
             break

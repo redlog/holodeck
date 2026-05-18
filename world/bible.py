@@ -57,7 +57,43 @@ def _deobfuscate_after_load(ws):
     """If the loaded state is marked obfuscated, decode in place and drop flag."""
     if ws.pop(OBFUSCATED_FLAG, False):
         _transform_secrets(ws)
+    _migrate_inventory(ws)
     return ws
+
+
+def _migrate_inventory(ws):
+    """Upgrade flat string inventory entries to rich dicts."""
+    import re
+    inv = ws.get("player", {}).get("inventory", [])
+    migrated = []
+    for entry in inv:
+        if isinstance(entry, dict):
+            entry.setdefault("item_id", re.sub(r"[^a-z0-9]+", "_", entry.get("item", "item").lower()).strip("_"))
+            entry.setdefault("provenance", "")
+            entry.setdefault("found_location_id", "")
+            entry.setdefault("found_location_name", "")
+            entry.setdefault("turn_acquired", 0)
+            entry.setdefault("sprite_path", None)
+            entry.setdefault("visual_description", "")
+            migrated.append(entry)
+        elif isinstance(entry, str):
+            item_id = re.sub(r"[^a-z0-9]+", "_", entry.lower()).strip("_")
+            migrated.append({
+                "item": entry,
+                "item_id": item_id,
+                "provenance": "",
+                "found_location_id": "",
+                "found_location_name": "",
+                "turn_acquired": 0,
+                "sprite_path": None,
+                "visual_description": "",
+            })
+        else:
+            migrated.append({"item": str(entry), "item_id": "unknown", "provenance": "",
+                             "found_location_id": "", "found_location_name": "",
+                             "turn_acquired": 0, "sprite_path": None, "visual_description": ""})
+    if inv:
+        ws["player"]["inventory"] = migrated
 
 
 def _game_dir(game_slug):
@@ -185,6 +221,7 @@ def create_game(title):
     game_dir.mkdir(parents=True, exist_ok=True)
     (game_dir / "rooms").mkdir(exist_ok=True)
     (game_dir / "portraits").mkdir(exist_ok=True)
+    (game_dir / "items").mkdir(exist_ok=True)
     (game_dir / "saves").mkdir(exist_ok=True)
 
     ws = new_game()

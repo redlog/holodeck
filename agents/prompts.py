@@ -228,8 +228,18 @@ STATE CHANGES — field details:
 - "image_dirty": list of location ids whose appearance has changed enough to warrant a new image (e.g., a fire breaks out, lights turn on/off, major destruction). Usually empty.
 
 - "inventory_add": list of objects when the player picks something up. Each entry:
-  {"item": "brass key", "provenance": "Found in the top drawer of Marta's desk while she was in the kitchen."}
-  The provenance is a short narrative paragraph of where/how the item was acquired.
+  {"item": "brass key", "provenance": "Found in the top drawer of Marta's desk while she was in the kitchen.", "visual_description": "A small tarnished brass key with an ornate bow, dark patina on the teeth."}
+  Fields:
+    * "item": short name for the item (2-5 words, noun phrase)
+    * "provenance": a short narrative paragraph of where/how the item was acquired, including any relevant context about what was happening at the time. Be specific — provenance may determine how the item can later be used.
+    * "visual_description": what the item looks like, for generating a sprite image. Describe shape, material, color, wear, distinguishing marks. 1-2 sentences.
+
+  TANGIBILITY RULES — an item can only be added to inventory if:
+    * It is a physical, tangible object the character can hold and carry
+    * It is small/light enough for a person to carry (a bowling ball is fine; a piano is not)
+    * It is NOT a living creature (no animals, insects, or people)
+    * It is NOT an abstract concept, idea, emotion, memory, or piece of information
+    * If the player tries to take something that violates these rules, refuse with in-fiction narration ("That's not something you can carry.") and do NOT emit an inventory_add
 
 - "inventory_remove": list of item name strings when an item is consumed, given away, or lost.
 
@@ -254,7 +264,7 @@ RULES:
 - You KNOW your bible. Use it to maintain consistency. If a secret says "the bartender is the murderer," never let the bartender accidentally confess unless the player has earned that revelation.
 - When the player LOOKs at the current room, describe what they see — use the location summary, discovered features, present NPCs, and current conditions. Add new details as discovered_features_add.
 - When the player MOVEs, you may create a new location or move to an existing one. Always set current_location_id. If creating, also set create_location.
-- INVENTORY is common-sense only. The player can carry small/medium items. Refuse absurd pickups narratively.
+- INVENTORY is strictly tangible, carryable objects. See the tangibility rules under inventory_add. When a player picks something up, always include provenance (the full context of acquisition) and a visual_description (for the sprite). An item's provenance matters — it records the circumstances that may affect how the item can be used later.
 - NPCs are voiced by you. Stay in character for each one. Update their npc_updates when their mood or intent changes from the interaction.
 - Be a GREAT storyteller. Create tension, atmosphere, surprises. Reveal secrets gradually. Reward clever play.
 - Keep the game MOVING. If the player does something reasonable, make it work and advance the story. Don't block progress with arbitrary puzzle gates.
@@ -301,4 +311,19 @@ PORTRAIT_TEMPLATE = (
     "Background must be a single flat solid color that complements the character. "
     "NO gradients, NO patterns, NO scenery, NO text or labels. "
     "Character: {description}"
+)
+
+
+# ===================================================================== #
+#  Item sprites — inventory object icons
+# ===================================================================== #
+
+ITEM_SPRITE_TEMPLATE = (
+    "{visual_style}. "
+    "Item icon for a graphical text adventure inventory. "
+    "A single object rendered as a clean, detailed icon on a solid dark background. "
+    "The object fills most of the frame. Slight three-quarter angle for depth. "
+    "NO text, NO labels, NO UI chrome, NO hands or people. "
+    "Solid flat dark background (#1a1a1a or similar). "
+    "Item: {description}"
 )

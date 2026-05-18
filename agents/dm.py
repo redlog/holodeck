@@ -23,6 +23,7 @@ of iteration; preserve their constraint structure when expanding.
 """
 
 import json
+import re
 import sys
 
 from agents.base import BaseAgent
@@ -402,10 +403,27 @@ class DungeonMaster(BaseAgent):
         # Player
         player = ws.get("player", {})
         inv = player.get("inventory", [])
-        inv_str = ", ".join(inv) if inv else "(empty)"
+        if inv:
+            inv_lines = []
+            for entry in inv:
+                if isinstance(entry, dict):
+                    name = entry.get("item", "???")
+                    prov = entry.get("provenance", "")
+                    loc = entry.get("found_location_name", "")
+                    parts = [name]
+                    if prov:
+                        parts.append(f"({prov})")
+                    if loc:
+                        parts.append(f"[found: {loc}]")
+                    inv_lines.append("  - " + " ".join(parts))
+                else:
+                    inv_lines.append(f"  - {entry}")
+            inv_str = "\n".join(inv_lines)
+        else:
+            inv_str = "(empty)"
         sections.append(
             f"PLAYER: {player.get('name', 'Unknown')}\n"
-            f"Inventory: {inv_str}"
+            f"Inventory:\n{inv_str}"
         )
 
         # Known locations (for move validation)
@@ -500,19 +518,49 @@ class DungeonMaster(BaseAgent):
             if loc:
                 loc["image_dirty"] = True
 
-        # Inventory
+        # Inventory — rich entries with provenance
         player = ws.setdefault("player", {})
         inv = player.setdefault("inventory", [])
+        turn_num = len(getattr(self, "_play_history", []))
+        cur_loc = ws.get("locations", {}).get(ws.get("current_location_id", ""), {})
         for item_entry in changes.get("inventory_add") or []:
             if isinstance(item_entry, dict):
-                inv.append(item_entry.get("item", str(item_entry)))
+                item_name = item_entry.get("item", str(item_entry))
             else:
-                inv.append(str(item_entry))
+                item_name = str(item_entry)
+                item_entry = {"item": item_name}
+
+            item_id = re.sub(r"[^a-z0-9]+", "_", item_name.lower()).strip("_")
+            # Deduplicate id if needed
+            existing_ids = {e.get("item_id") for e in inv if isinstance(e, dict)}
+            base_id = item_id
+            counter = 2
+            while item_id in existing_ids:
+                item_id = f"{base_id}_{counter}"
+                counter += 1
+
+            rich_entry = {
+                "item": item_name,
+                "item_id": item_id,
+                "provenance": item_entry.get("provenance", ""),
+                "found_location_id": ws.get("current_location_id", ""),
+                "found_location_name": cur_loc.get("name", ""),
+                "turn_acquired": turn_num,
+                "sprite_path": None,
+                "visual_description": item_entry.get("visual_description", ""),
+            }
+            inv.append(rich_entry)
+            _log(f"Inventory add: {item_name} (id={item_id})")
+
         for item_name in changes.get("inventory_remove") or []:
-            try:
-                inv.remove(item_name)
-            except ValueError:
-                pass
+            # Match by item name (case-insensitive)
+            lower = item_name.lower()
+            for i, entry in enumerate(inv):
+                entry_name = entry.get("item", entry) if isinstance(entry, dict) else str(entry)
+                if entry_name.lower() == lower:
+                    inv.pop(i)
+                    _log(f"Inventory remove: {item_name}")
+                    break
 
         # Discovered features for current location
         cur_loc_id = ws.get("current_location_id")

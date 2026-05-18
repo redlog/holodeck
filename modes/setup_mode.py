@@ -1,7 +1,7 @@
 """Setup mode UI: the screen where the player and DM converse to define the
 world before play begins. See design/text_adventure_design.md.
 
-Layout (960x600):
+Layout (1280x800):
   +----------------------------------------------------+
   |  [portrait 152x152]    Game: ...                   |
   |                        Tone: ...                   |
