@@ -147,6 +147,8 @@ def run_play(screen, window, clock, game_slug, world_state, dm,
             return True
 
         play.update(dt, filtered)
+        if play.menu_requested:
+            return True
         play.render()
         _flip(screen, window)
 

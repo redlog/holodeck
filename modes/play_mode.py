@@ -15,15 +15,17 @@ Layout (1280x800):
   +-----------------------------------------------------+
 """
 
+import os
 import sys
 import textwrap
+from datetime import datetime
 
 import pygame
 
 from config import INTERNAL_WIDTH, INTERNAL_HEIGHT
 from rendering.ui import TextInput, get_font
 from rendering.save_load_ui import SaveLoadUI
-from world.bible import save_game, load_game, get_save_slots
+from world.bible import save_game, load_game, get_save_slots, get_game_dir
 
 
 def _log(msg):
@@ -201,6 +203,9 @@ class PlayMode:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
                 slots = get_save_slots(self._slug)
                 self._save_load_ui.open_load(slots)
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F12:
+                self._take_screenshot()
                 continue
 
             if event.type == pygame.MOUSEWHEEL:
@@ -593,6 +598,11 @@ class PlayMode:
         text = text.strip()
         if not text:
             return
+
+        if text.startswith("/"):
+            self._handle_slash_command(text)
+            return
+
         if self._waiting:
             self._add_lines("system", "(the DM is thinking — please wait)")
             return
@@ -601,6 +611,64 @@ class PlayMode:
         self._add_lines("user", text)
         self._waiting = True
         self.dm.send_message(text)
+
+    def _handle_slash_command(self, text):
+        parts = text.split(None, 1)
+        cmd = parts[0].lower()
+        self._scroll_offset = 0
+
+        if cmd == "/help":
+            self._add_lines("system", "Commands:")
+            self._add_lines("system", "  /help — show this help")
+            self._add_lines("system", "  /save [name] — save game (or F5)")
+            self._add_lines("system", "  /load [name] — load a save (or F9)")
+            self._add_lines("system", "  /inventory — list your items")
+            self._add_lines("system", "  /quit — return to main menu")
+            self._add_lines("system", "  F12 — take a screenshot")
+        elif cmd == "/save":
+            name = parts[1].strip() if len(parts) > 1 else None
+            if name:
+                try:
+                    save_game(
+                        self.world_state, self._slug, name,
+                        play_history=self.dm.get_play_history(),
+                        console_lines=self.console_lines,
+                    )
+                    self._add_lines("system", f"Saved to slot: {name}")
+                except Exception as e:
+                    self._add_lines("system", f"Save failed: {e}")
+            else:
+                slots = get_save_slots(self._slug)
+                self._save_load_ui.open_save(slots)
+        elif cmd == "/load":
+            name = parts[1].strip() if len(parts) > 1 else None
+            if name:
+                try:
+                    loaded = load_game(self._slug, name)
+                    if loaded is None:
+                        self._add_lines("system", f"No save found: {name}")
+                    else:
+                        ws, session = loaded
+                        self._apply_loaded_state(ws, session)
+                        self._add_lines("system", f"Loaded save: {name}")
+                except Exception as e:
+                    self._add_lines("system", f"Load failed: {e}")
+            else:
+                slots = get_save_slots(self._slug)
+                self._save_load_ui.open_load(slots)
+        elif cmd == "/inventory" or cmd == "/inv":
+            inv = self.world_state.get("player", {}).get("inventory", [])
+            if not inv:
+                self._add_lines("system", "Your inventory is empty.")
+            else:
+                self._add_lines("system", f"Inventory ({len(inv)} items):")
+                for entry in inv:
+                    name = entry.get("item", str(entry)) if isinstance(entry, dict) else str(entry)
+                    self._add_lines("system", f"  - {name}")
+        elif cmd == "/quit":
+            self.menu_requested = True
+        else:
+            self._add_lines("system", f"Unknown command: {cmd}  (type /help)")
 
     def _handle_dm_response(self, response):
         # Narration text — new format uses "narration", old uses "response_text"
@@ -632,6 +700,18 @@ class PlayMode:
             save_game(self.world_state, self._slug)
         except Exception as e:
             _log(f"autosave failed: {e}")
+
+    def _take_screenshot(self):
+        try:
+            shot_dir = get_game_dir(self._slug) / "screenshots"
+            shot_dir.mkdir(exist_ok=True)
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = shot_dir / f"shot_{stamp}.png"
+            pygame.image.save(self.surface, str(path))
+            self._add_lines("system", f"Screenshot saved: {path.name}")
+        except Exception as e:
+            _log(f"screenshot failed: {e}")
+            self._add_lines("system", f"Screenshot failed: {e}")
 
     def _handle_save_load_result(self, result):
         if result == "cancelled":
