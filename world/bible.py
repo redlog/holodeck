@@ -285,6 +285,7 @@ def new_game():
             "inventory": [],
         },
         "current_location_id": None,
+        "narrative_clock": "",
         "locations": {},
         "npcs": {},
         "plot_threads": [],

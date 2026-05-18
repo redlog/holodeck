@@ -110,10 +110,13 @@ Your job, in ONE response, is to:
 
 4. SEED PLOT THREADS. Convert the interview's plot_seeds into structured plot_threads. Each thread has an id, summary, status ("active" or "background"), and known_to_player. The player-volunteered seeds (e.g., "Vesper's brother was killed three years ago") become known_to_player=true threads. You may add 1–2 additional hidden threads of your own (known_to_player=false) tied to your bible secrets — these are the threads the player will discover.
 
+5. SET THE NARRATIVE CLOCK. Pick a concrete in-fiction date and time of day for the opening scene. This anchors the world — NPCs have schedules, shops open and close, light changes. Format: a short natural-language string like "1888-10-14, late evening" or "Day 1, morning" or "Tuesday, 3:47 AM". Match the genre (a noir gets "Tuesday night, 11 PM"; a fantasy gets "the third day of the Harvest Moon, dusk").
+
 RESPOND WITH JSON IN THIS EXACT SHAPE:
 
 {
   "starting_location_id": "office",
+  "narrative_clock": "1888-10-14, late evening",
   "new_locations": {
     "office": {
       "name": "Vesper's Office",
@@ -208,11 +211,13 @@ RESPONSE FORMAT — respond with JSON:
   "state_changes": {
     "current_location_id": null,
     "create_location": null,
+    "advance_clock": null,
     "image_dirty": [],
     "inventory_add": [],
     "inventory_remove": [],
     "discovered_features_add": [],
     "npc_updates": {},
+    "npc_tick": {},
     "reveal_secret": [],
     "update_threads": [],
     "bible_append": null,
@@ -266,6 +271,20 @@ STATE CHANGES — field details:
 - "bible_append": optional string to append to the DM bible scratchpad when you make a new private decision or note. Example: "Decided that the warehouse key is hidden in the piano bench."
 
 - "events_log_append": optional string to append to the current location's events log. Brief summary of what just happened here.
+
+- "advance_clock": set to a SHORT string describing the new in-fiction time when time passes. Examples: "1888-10-14, just before midnight", "Day 2, early morning", "twenty minutes later". Emit this when:
+    * The player explicitly passes time ("I wait", "I sleep until morning", "I spend the afternoon researching")
+    * Travel implies significant time ("I walk across town to the docks" = minutes; "I ride to the next village" = hours)
+    * You fast-forward through uneventful time for pacing
+  Do NOT advance the clock for normal actions (looking around, talking, picking things up). Most turns have no clock change.
+
+- "npc_tick": when advance_clock is set AND time passes significantly (more than a few minutes), update what OFF-SCREEN NPCs have been doing. This is a dict of npc_id → partial NPC state, just like npc_updates, but specifically for NPCs who are NOT in the current scene. Ask yourself: given this NPC's persona, intent, and the elapsed time, what would they reasonably be doing now?
+  Examples:
+    * A bartender whose shift ended: {"current_location_id": "home", "current_intent": "Sleeping."}
+    * A suspect who was nervous: {"current_location_id": "docks", "current_intent": "Trying to book passage out of town."}
+    * Someone with no reason to move: omit them (most NPCs, most of the time).
+  Also check your bible's planned_beats — some may trigger on time passage ("after two days the hooded woman flees town"). If a beat triggers, apply it here and note it in bible_append.
+  npc_tick can be empty {} if no off-screen NPC would have changed. This is often the case for short time skips.
 
 RULES:
 - OMIT state_changes fields that have no changes (null, empty list, empty dict). Only include fields with actual changes.

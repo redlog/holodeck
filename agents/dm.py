@@ -277,6 +277,11 @@ class DungeonMaster(BaseAgent):
         if starting_id and starting_id in ws["locations"]:
             ws["current_location_id"] = starting_id
 
+        # Narrative clock
+        clock = parsed.get("narrative_clock")
+        if clock:
+            ws["narrative_clock"] = clock
+
         # NPCs
         new_npcs = parsed.get("new_npcs") or {}
         ws.setdefault("npcs", {})
@@ -552,10 +557,12 @@ class DungeonMaster(BaseAgent):
 
         # Game identity
         meta = ws.get("meta", {})
+        clock = ws.get("narrative_clock", "")
         sections.append(
             f"GAME: {meta.get('title', 'Untitled')}\n"
             f"Tone: {meta.get('tone', '')}\n"
-            f"Visual style: {meta.get('visual_style', '')}"
+            f"Visual style: {meta.get('visual_style', '')}\n"
+            f"Current time: {clock or '(not set)'}"
         )
 
         # Current location
@@ -594,6 +601,24 @@ class DungeonMaster(BaseAgent):
             sections.append("NPCs PRESENT:\n" + "\n".join(npc_lines))
         else:
             sections.append("NPCs PRESENT: (none)")
+
+        # Off-screen NPCs (for NPC tick when time passes)
+        offscreen_npcs = {
+            nid: npc for nid, npc in npcs.items()
+            if nid not in present_npcs
+        }
+        if offscreen_npcs:
+            off_lines = []
+            for nid, npc in offscreen_npcs.items():
+                off_loc_id = npc.get("current_location_id", "?")
+                off_loc = ws.get("locations", {}).get(off_loc_id, {})
+                off_loc_name = off_loc.get("name", off_loc_id)
+                off_lines.append(
+                    f"  {npc.get('name', nid)} (id: {nid}): "
+                    f"at {off_loc_name} | "
+                    f"Intent: {npc.get('current_intent', '?')}"
+                )
+            sections.append("OFF-SCREEN NPCs:\n" + "\n".join(off_lines))
 
         # Player
         player = ws.get("player", {})
@@ -706,6 +731,31 @@ class DungeonMaster(BaseAgent):
         if new_loc_id and new_loc_id in ws.get("locations", {}):
             ws["current_location_id"] = new_loc_id
             _log(f"Moved to: {new_loc_id}")
+
+        # Narrative clock
+        new_clock = changes.get("advance_clock")
+        if new_clock:
+            ws["narrative_clock"] = new_clock
+            _log(f"Clock advanced: {new_clock}")
+
+        # NPC tick — off-screen NPC updates when time passes
+        for npc_id, npc_patch in (changes.get("npc_tick") or {}).items():
+            npc = ws.get("npcs", {}).get(npc_id)
+            if npc and isinstance(npc_patch, dict):
+                old_loc = npc.get("current_location_id")
+                npc.update(npc_patch)
+                new_loc = npc.get("current_location_id")
+                # Update present_npc_ids if the NPC moved
+                if old_loc != new_loc:
+                    old_loc_data = ws.get("locations", {}).get(old_loc, {})
+                    new_loc_data = ws.get("locations", {}).get(new_loc, {})
+                    if npc_id in old_loc_data.get("present_npc_ids", []):
+                        old_loc_data["present_npc_ids"].remove(npc_id)
+                    if new_loc and npc_id not in new_loc_data.get("present_npc_ids", []):
+                        new_loc_data.setdefault("present_npc_ids", []).append(npc_id)
+                    _log(f"NPC tick: {npc_id} moved {old_loc} → {new_loc}")
+                else:
+                    _log(f"NPC tick: {npc_id} updated (stayed in {old_loc})")
 
         # Image dirty flags
         for lid in changes.get("image_dirty") or []:
