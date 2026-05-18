@@ -27,9 +27,11 @@ import re
 import sys
 
 from agents.base import BaseAgent
+from agents.npc import NPCAgent
 from agents.prompts import (
     INTERVIEW_SYSTEM, INTERVIEW_OPENING_DIRECTIVE,
     CREATION_SYSTEM, PLAY_SYSTEM, OPENING_SCENE_DIRECTIVE,
+    DM_NPC_DISPATCH,
 )
 from config import GEMINI_DM_MODEL
 
@@ -61,10 +63,10 @@ class DungeonMaster(BaseAgent):
         super().__init__(model=GEMINI_DM_MODEL, temperature=0.9)
         self.world_state = world_state
         self._history = []
+        self._npc_agent = NPCAgent()
         if self._world_already_seeded():
             self.phase = self.PHASE_PLAY
         elif self._setup_already_complete():
-            # Interview is done but world not yet seeded — go straight to creating.
             self.phase = self.PHASE_CREATING
         else:
             self.phase = self.PHASE_INTERVIEW
@@ -280,8 +282,12 @@ class DungeonMaster(BaseAgent):
         ws.setdefault("npcs", {})
         for npc_id, npc_def in new_npcs.items():
             npc_def.setdefault("portrait_path", None)
-            npc_def.setdefault("known_to_player", True)  # visible in opening scene
+            npc_def.setdefault("known_to_player", True)
             npc_def.setdefault("dialog_summary_with_player", "")
+            npc_def.setdefault("voice", "")
+            npc_def.setdefault("knows", [])
+            npc_def.setdefault("hides", [])
+            npc_def.setdefault("lies_about", [])
             npc_def["id"] = npc_id
             ws["npcs"][npc_id] = npc_def
 
@@ -327,7 +333,6 @@ class DungeonMaster(BaseAgent):
             self._play_history.append(
                 {"role": "user", "parts": [{"text": context_msg}]}
             )
-            # Trim to keep context manageable
             if len(self._play_history) > self.MAX_PLAY_HISTORY:
                 self._play_history = self._play_history[-self.MAX_PLAY_HISTORY:]
 
@@ -338,6 +343,20 @@ class DungeonMaster(BaseAgent):
 
             parsed = json.loads(_strip_json_fences(raw))
             self._apply_play_changes(parsed)
+
+            intent = parsed.get("intent", {})
+            action = intent.get("action")
+            target_npc_id = self._resolve_talk_target(intent) if action == "talk" else None
+
+            if target_npc_id:
+                npc_response = self._dispatch_to_npc(target_npc_id, user_text)
+                if npc_response:
+                    woven = self._weave_npc_response(
+                        target_npc_id, npc_response, user_text, parsed
+                    )
+                    if woven:
+                        self._apply_play_changes(woven)
+                        parsed = self._merge_talk_results(parsed, woven, target_npc_id)
 
             self._result_queue.put(parsed)
 
@@ -353,6 +372,115 @@ class DungeonMaster(BaseAgent):
                 "narration": f"[DM error: {str(e)[:200]}]",
                 "speaker": "dm",
             })
+
+    def _resolve_talk_target(self, intent):
+        """Find the npc_id for a talk intent's target."""
+        target = (intent.get("target") or "").lower()
+        if not target:
+            return None
+
+        npcs = self.world_state.get("npcs", {})
+        loc_id = self.world_state.get("current_location_id")
+        loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
+        present_ids = loc.get("present_npc_ids", [])
+
+        # Direct id match
+        if target in npcs and target in present_ids:
+            return target
+
+        # Name match against present NPCs
+        for nid in present_ids:
+            npc = npcs.get(nid, {})
+            if target in npc.get("name", "").lower():
+                return nid
+
+        # Fuzzy: any present NPC whose name or id contains the target
+        for nid in present_ids:
+            npc = npcs.get(nid, {})
+            name_lower = npc.get("name", "").lower()
+            if target in name_lower or target in nid:
+                return nid
+
+        _log(f"Could not resolve talk target '{target}' to a present NPC")
+        return None
+
+    def _dispatch_to_npc(self, npc_id, player_input):
+        """Call the NPC agent and get their response. Synchronous (on worker thread)."""
+        npc_data = self.world_state.get("npcs", {}).get(npc_id)
+        if not npc_data:
+            return None
+        if not self._npc_agent.connected:
+            _log("NPC agent not connected, DM will voice this NPC directly")
+            return None
+
+        loc_id = self.world_state.get("current_location_id")
+        loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
+        npcs = self.world_state.get("npcs", {})
+        other_npcs = [
+            npcs[nid].get("name", nid)
+            for nid in loc.get("present_npc_ids", [])
+            if nid != npc_id and nid in npcs
+        ]
+        scene_context = (
+            f"Location: {loc.get('name', loc_id)}. "
+            f"{loc.get('summary', '')} "
+        )
+        if other_npcs:
+            scene_context += f"Also present: {', '.join(other_npcs)}."
+
+        _log(f"Dispatching to NPC agent: {npc_data.get('name', npc_id)}")
+        return self._npc_agent.speak(npc_data, player_input, scene_context, self.world_state)
+
+    def _weave_npc_response(self, npc_id, npc_response, player_input, initial_parsed):
+        """Send the NPC response back to the DM to weave into narration."""
+        npc_data = self.world_state.get("npcs", {}).get(npc_id, {})
+        npc_name = npc_data.get("name", npc_id)
+
+        dispatch_msg = DM_NPC_DISPATCH.format(
+            npc_name=npc_name,
+            speech=npc_response.get("speech", "..."),
+            tells=json.dumps(npc_response.get("tells", [])),
+            state_change=json.dumps(npc_response.get("internal_state_change", {})),
+            player_input=player_input or "(opening scene)",
+        )
+
+        self._play_history.append(
+            {"role": "user", "parts": [{"text": dispatch_msg}]}
+        )
+
+        try:
+            raw = self._call_text(PLAY_SYSTEM, self._play_history)
+            self._play_history.append(
+                {"role": "model", "parts": [{"text": raw}]}
+            )
+            return json.loads(_strip_json_fences(raw))
+        except Exception as e:
+            _log(f"Weave error: {e}")
+            # Fall back: construct narration directly from NPC response
+            tells_prose = " ".join(npc_response.get("tells", []))
+            speech = npc_response.get("speech", "...")
+            fallback_narration = f'{tells_prose} "{speech}"' if tells_prose else f'"{speech}"'
+            return {
+                "narration": fallback_narration,
+                "speaker": npc_id,
+                "state_changes": {
+                    "npc_updates": {
+                        npc_id: npc_response.get("internal_state_change", {})
+                    }
+                },
+            }
+
+    def _merge_talk_results(self, initial, woven, npc_id):
+        """Merge the initial DM lead-in with the woven NPC response."""
+        lead_in = initial.get("narration", "")
+        npc_narration = woven.get("narration", "")
+        merged_narration = f"{lead_in}\n\n{npc_narration}".strip()
+
+        result = dict(woven)
+        result["narration"] = merged_narration
+        result["speaker"] = npc_id
+        result["intent"] = initial.get("intent", {})
+        return result
 
     def _build_play_context(self, user_text):
         ws = self.world_state
@@ -388,14 +516,25 @@ class DungeonMaster(BaseAgent):
         if present_npcs:
             npc_lines = []
             for nid, npc in present_npcs.items():
-                npc_lines.append(
+                line = (
                     f"  {npc.get('name', nid)} (id: {nid}): "
                     f"{npc.get('public_persona', '')} | "
+                    f"Voice: {npc.get('voice', 'normal')} | "
                     f"Intent: {npc.get('current_intent', '')} | "
                     f"Mood toward player: {npc.get('mood_toward_player', '')} | "
                     f"Known: {npc.get('known_to_player', False)} | "
                     f"Dialog so far: {npc.get('dialog_summary_with_player', '') or '(none)'}"
                 )
+                knows = npc.get("knows", [])
+                hides = npc.get("hides", [])
+                lies_about = npc.get("lies_about", [])
+                if knows:
+                    line += f"\n    Knows: {'; '.join(knows)}"
+                if hides:
+                    line += f"\n    Hides: {'; '.join(hides)}"
+                if lies_about:
+                    line += f"\n    Lies about: {'; '.join(lies_about)}"
+                npc_lines.append(line)
             sections.append("NPCs PRESENT:\n" + "\n".join(npc_lines))
         else:
             sections.append("NPCs PRESENT: (none)")

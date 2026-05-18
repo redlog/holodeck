@@ -37,6 +37,14 @@ def _transform_secrets(ws):
         if isinstance(bible.get("scratchpad"), str):
             bible["scratchpad"] = _rot13(bible["scratchpad"])
 
+    # NPC hidden knowledge
+    for npc in (ws.get("npcs") or {}).values():
+        if isinstance(npc, dict):
+            if isinstance(npc.get("hides"), list):
+                npc["hides"] = [_rot13(h) for h in npc["hides"]]
+            if isinstance(npc.get("lies_about"), list):
+                npc["lies_about"] = [_rot13(l) for l in npc["lies_about"]]
+
     # Plot threads the player doesn't yet know about
     for thread in ws.get("plot_threads") or []:
         if isinstance(thread, dict) and not thread.get("known_to_player", True):
@@ -58,7 +66,21 @@ def _deobfuscate_after_load(ws):
     if ws.pop(OBFUSCATED_FLAG, False):
         _transform_secrets(ws)
     _migrate_inventory(ws)
+    _migrate_npcs(ws)
     return ws
+
+
+def _migrate_npcs(ws):
+    """Ensure all NPCs have the fields needed by the NPC agent system."""
+    for npc_id, npc in ws.get("npcs", {}).items():
+        npc.setdefault("id", npc_id)
+        npc.setdefault("voice", "")
+        npc.setdefault("knows", [])
+        npc.setdefault("hides", [])
+        npc.setdefault("lies_about", [])
+        npc.setdefault("known_to_player", True)
+        npc.setdefault("dialog_summary_with_player", "")
+        npc.setdefault("portrait_path", None)
 
 
 def _migrate_inventory(ws):
