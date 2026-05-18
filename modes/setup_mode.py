@@ -348,7 +348,33 @@ class SetupMode:
             if loc_id:
                 loc = self.world_state.get("locations", {}).get(loc_id, {})
                 if loc and not loc.get("image_path"):
-                    self._scenery_agent.generate_room(loc_id, loc, visual_style)
+                    ws = self.world_state
+                    npcs = ws.get("npcs", {})
+                    present = [
+                        npcs[nid] for nid in loc.get("present_npc_ids", [])
+                        if nid in npcs
+                    ]
+                    # Include secrets relevant to the starting location
+                    visual_clues = []
+                    bible = ws.get("dm_bible", {})
+                    for secret in bible.get("secrets", []):
+                        fact = secret.get("fact", "").lower()
+                        loc_name = loc.get("name", "").lower()
+                        if loc_name and loc_name in fact:
+                            visual_clues.append(secret["fact"])
+                    for beat in bible.get("planned_beats", []):
+                        loc_name = loc.get("name", "").lower()
+                        if loc_name and loc_name in beat.lower():
+                            visual_clues.append(beat)
+                    game_ctx = {
+                        "tone": ws.get("meta", {}).get("tone", ""),
+                        "present_npcs": present,
+                        "visual_clues": visual_clues,
+                        "discovered_features": loc.get("discovered_features", []),
+                        "events_log": loc.get("events_log_summary", ""),
+                    }
+                    self._scenery_agent.generate_room(loc_id, loc, visual_style,
+                                                      game_context=game_ctx)
                     self._add_lines("system",
                                     f"Painting {loc.get('name', loc_id)}...")
 

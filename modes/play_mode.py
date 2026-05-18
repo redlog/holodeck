@@ -100,12 +100,8 @@ class PlayMode:
         self._render_opening_beat()
 
     def _render_opening_beat(self):
-        loc_id = self.world_state.get("current_location_id")
-        loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
-        if loc.get("summary"):
-            self._add_lines("dm", loc["summary"])
-        else:
-            self._add_lines("system", "(no starting location set)")
+        self._waiting = True
+        self.dm.narrate_opening()
 
     # ------------------------------------------------------------------ #
     # Main loop hooks
@@ -282,8 +278,27 @@ class PlayMode:
         self.dm.send_message(text)
 
     def _handle_dm_response(self, response):
-        text = response.get("response_text") or "[no response]"
-        self._add_lines("dm", text)
+        # Narration text — new format uses "narration", old uses "response_text"
+        text = response.get("narration") or response.get("response_text") or "[no response]"
+
+        # Speaker swap for portrait
+        speaker = response.get("speaker", "dm")
+        if speaker and speaker != "dm":
+            npc = self.world_state.get("npcs", {}).get(speaker)
+            if npc:
+                self._speaker_id = speaker
+                source_tag = "dm"  # still styled as DM narration
+            else:
+                source_tag = "dm"
+        else:
+            self._speaker_id = "player"
+            source_tag = "dm"
+
+        self._add_lines(source_tag, text)
+
+        # Trigger imagery for any dirty locations or new locations
+        self._check_imagery_triggers(response)
+
         self._autosave()
         self._scroll_offset = 0
 
@@ -338,6 +353,74 @@ class PlayMode:
             return True
 
         return False
+
+    # ------------------------------------------------------------------ #
+    # Imagery triggers from play-turn state changes
+    # ------------------------------------------------------------------ #
+
+    def _check_imagery_triggers(self, response):
+        changes = response.get("state_changes")
+        if not changes:
+            return
+
+        # New location with image_dirty — render its background
+        new_loc = changes.get("create_location")
+        if isinstance(new_loc, dict) and new_loc.get("id"):
+            self._trigger_room_render(new_loc["id"])
+
+        # Existing locations marked dirty
+        for lid in changes.get("image_dirty") or []:
+            self._trigger_room_render(lid)
+
+        # Location change — if moved to a location whose image hasn't loaded
+        new_loc_id = changes.get("current_location_id")
+        if new_loc_id:
+            loc = self.world_state.get("locations", {}).get(new_loc_id, {})
+            if loc.get("image_dirty") and not loc.get("image_path"):
+                self._trigger_room_render(new_loc_id)
+
+    def _trigger_room_render(self, loc_id):
+        if not self._scenery_agent:
+            return
+        loc = self.world_state.get("locations", {}).get(loc_id)
+        if not loc or not loc.get("image_prompt"):
+            return
+        meta = self.world_state.get("meta", {})
+        style = meta.get("visual_style", "")
+        ctx = self._build_scenery_context(loc_id, loc)
+        self._scenery_agent.generate_room(loc_id, loc, style, game_context=ctx)
+        _log(f"Triggered room render for: {loc_id}")
+
+    def _build_scenery_context(self, loc_id, loc):
+        ws = self.world_state
+        npcs = ws.get("npcs", {})
+        present = [
+            npcs[nid] for nid in loc.get("present_npc_ids", [])
+            if nid in npcs
+        ]
+
+        # Gather visual clues from secrets relevant to this location
+        visual_clues = []
+        bible = ws.get("dm_bible", {})
+        for secret in bible.get("secrets", []):
+            if not secret.get("revealed", False):
+                fact = secret.get("fact", "").lower()
+                loc_name = loc.get("name", "").lower()
+                if loc_name and loc_name in fact:
+                    visual_clues.append(secret["fact"])
+        # Planned beats that reference this location
+        for beat in bible.get("planned_beats", []):
+            loc_name = loc.get("name", "").lower()
+            if loc_name and loc_name in beat.lower():
+                visual_clues.append(beat)
+
+        return {
+            "tone": ws.get("meta", {}).get("tone", ""),
+            "present_npcs": present,
+            "visual_clues": visual_clues,
+            "discovered_features": loc.get("discovered_features", []),
+            "events_log": loc.get("events_log_summary", ""),
+        }
 
     # ------------------------------------------------------------------ #
     # Helpers

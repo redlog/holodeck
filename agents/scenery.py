@@ -25,10 +25,57 @@ A painted background for a graphical text adventure game. Paint this scene:
 
 {scene}
 
+{context}
+
 The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Treat the camera as a fixed three-quarter overhead view typical of point-and-click adventure games.
+
+Every detail in this painting matters — players will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
 
 Render the entire frame with care — every region should be finished painted artwork edge to edge. Do NOT add letterbox bars, vignettes, or framing borders.
 """
+
+
+def _build_scenery_context(game_context):
+    """Build extra context lines for the image prompt from game state."""
+    if not game_context:
+        return ""
+    lines = []
+
+    tone = game_context.get("tone", "")
+    if tone:
+        lines.append(f"Mood/tone: {tone}")
+
+    # NPCs visually present — their appearance affects the scene
+    npcs = game_context.get("present_npcs") or []
+    if npcs:
+        npc_descs = []
+        for npc in npcs:
+            name = npc.get("name", "")
+            desc = npc.get("description", "")
+            intent = npc.get("current_intent", "")
+            if name:
+                npc_descs.append(f"{name}: {desc}. Currently: {intent}".strip())
+        if npc_descs:
+            lines.append("Characters who should be visible in the scene:")
+            lines.extend(f"  - {d}" for d in npc_descs)
+
+    # Visual clues from secrets — things the observant player should notice
+    visual_clues = game_context.get("visual_clues") or []
+    if visual_clues:
+        lines.append("Important visual details to include (these are plot-relevant clues):")
+        lines.extend(f"  - {c}" for c in visual_clues)
+
+    # Discovered features already known
+    features = game_context.get("discovered_features") or []
+    if features:
+        lines.append("Known features that should be visible: " + ", ".join(features))
+
+    # Events that changed the scene
+    events = game_context.get("events_log") or ""
+    if events:
+        lines.append(f"Recent events here: {events}")
+
+    return "\n".join(lines)
 
 
 class SceneryAgent(BaseAgent):
@@ -41,23 +88,29 @@ class SceneryAgent(BaseAgent):
     def pending(self):
         return bool(self._pending)
 
-    def generate_room(self, location_id, location_def, visual_style):
+    def generate_room(self, location_id, location_def, visual_style,
+                      game_context=None):
         if location_id in self._pending:
             return
         self._pending[location_id] = True
         _log(f"Starting room paint for '{location_id}'")
-        self._run_threaded(self._pipeline, location_id, location_def, visual_style)
+        self._run_threaded(self._pipeline, location_id, location_def,
+                           visual_style, game_context)
 
-    def _pipeline(self, location_id, location_def, visual_style):
+    def _pipeline(self, location_id, location_def, visual_style,
+                  game_context=None):
         try:
             scene = (location_def.get("image_prompt")
                      or location_def.get("summary")
                      or location_def.get("name", "an empty room"))
 
+            context = _build_scenery_context(game_context)
+
             _log(f"[{location_id}] painting scene...")
             prompt = BACKGROUND_PROMPT_TEMPLATE.format(
                 visual_style=visual_style or "painterly adventure-game art",
                 scene=scene,
+                context=context,
             )
             image_bytes = self._call_image(prompt, aspect_ratio="16:9")
             if not image_bytes:

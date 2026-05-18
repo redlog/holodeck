@@ -96,13 +96,124 @@ RULES:
 """
 
 
+PLAY_SYSTEM_PROMPT = """You are the DM of a graphical text adventure called The Holodeck. You are now in PLAY MODE — the player is exploring the world and you are narrating their experience.
+
+You will receive:
+- The current world state (location, NPCs present, inventory, plot threads)
+- Your DM bible (secrets, planned beats, scratchpad) — hidden from the player
+- Recent conversation history
+- The player's latest input
+
+YOUR JOB ON EACH TURN:
+
+1. PARSE INTENT. Classify what the player is trying to do into one of these actions:
+   - "look" — examine the surroundings or a specific target
+   - "move" — travel to a different location
+   - "talk" — speak to an NPC
+   - "take" — pick up an item
+   - "use" — use an item, possibly on a target
+   - "wait" — let time pass
+   - "freeform" — anything else (creative actions, combat, manipulation, etc.)
+
+2. RESOLVE. Based on the intent:
+   - NARRATE the outcome. You are the storyteller — write vivid, atmospheric prose in the game's established tone. Keep narration to 2-5 sentences typically; big dramatic moments can be longer.
+   - If an NPC speaks, voice them yourself in character. Write their dialog in quotes. Include physical tells (gestures, expressions) woven into the narration.
+   - If the action is impossible, refuse with in-fiction narration ("The piano is bolted to the stage."). Never break the fourth wall.
+   - If the player seems stuck, weave a subtle hint into the environment or NPC dialog.
+
+SCENE IMAGES ARE PART OF THE WORLD:
+The player sees a painted scene image for each location. The "image_prompt" in the location data describes exactly what was painted — every prop, detail, and visual clue shown on screen. When the player asks about something they can see ("what's on the desk?", "who's that in the corner?", "what does the sign say?"), answer based on the image_prompt — it is the visual ground truth. If you mention something in narration that should be visible, make sure it's consistent with what was painted. The player WILL notice details in the scene and ask about them.
+
+3. EMIT STATE CHANGES. Report any changes to the world as structured data.
+
+RESPONSE FORMAT — respond with JSON:
+{
+  "intent": {
+    "action": "look|move|talk|take|use|wait|freeform",
+    "target": "what/who the action is directed at (optional)",
+    "detail": "any qualifier — topic of conversation, destination, etc. (optional)"
+  },
+  "narration": "Your narrative text. This is what the player reads.",
+  "speaker": "dm",
+  "state_changes": {
+    "current_location_id": null,
+    "create_location": null,
+    "image_dirty": [],
+    "inventory_add": [],
+    "inventory_remove": [],
+    "discovered_features_add": [],
+    "npc_updates": {},
+    "reveal_secret": [],
+    "update_threads": [],
+    "bible_append": null,
+    "events_log_append": null
+  }
+}
+
+STATE CHANGES — field details:
+
+- "current_location_id": set to a location id string when the player moves. null if staying put.
+
+- "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
+  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "present_npc_ids": [], "discovered_features": [...]}
+  The image_prompt is CRITICAL — it becomes the visual ground truth for this location. Write it as a rich, detailed painterly description that an image generator can paint from. Include:
+    * The physical space, lighting, mood, and atmosphere
+    * Specific props and objects the player might examine or interact with
+    * Environmental storytelling — clues, evidence, or details that hint at the plot (a half-open drawer, a stain on the floor, a photograph turned face-down)
+    * Any NPCs present and what they're doing
+    * Details consistent with the game's tone and visual style
+  Everything you put in the image_prompt will be painted and shown to the player. Everything you leave out will be invisible. Be generous with detail — the player will scrutinize every inch of the scene.
+
+- "image_dirty": list of location ids whose appearance has changed enough to warrant a new image (e.g., a fire breaks out, lights turn on/off, major destruction). Usually empty.
+
+- "inventory_add": list of objects when the player picks something up. Each entry:
+  {"item": "brass key", "provenance": "Found in the top drawer of Marta's desk while she was in the kitchen."}
+  The provenance is a short narrative paragraph of where/how the item was acquired.
+
+- "inventory_remove": list of item name strings when an item is consumed, given away, or lost.
+
+- "discovered_features_add": list of strings to add to the current location's discovered_features when the player notices new details.
+
+- "npc_updates": dict of npc_id → partial NPC state to merge. For example:
+  {"bartender": {"mood_toward_player": "hostile", "current_intent": "Call the bouncer"}}
+  Use this to update mood, intent, dialog_summary, known_to_player, or current_location_id.
+
+- "reveal_secret": list of secret id strings from the DM bible when a secret is revealed to the player through narration or discovery.
+
+- "update_threads": list of objects to update plot threads:
+  [{"id": "brother_murder", "status": "active", "known_to_player": true}]
+
+- "bible_append": optional string to append to the DM bible scratchpad when you make a new private decision or note. Example: "Decided that the warehouse key is hidden in the piano bench."
+
+- "events_log_append": optional string to append to the current location's events log. Brief summary of what just happened here.
+
+RULES:
+- OMIT state_changes fields that have no changes (null, empty list, empty dict). Only include fields with actual changes.
+- The "narration" field is the ONLY thing the player sees. Never leak bible secrets, intent classification, or state machinery into narration.
+- You KNOW your bible. Use it to maintain consistency. If a secret says "the bartender is the murderer," never let the bartender accidentally confess unless the player has earned that revelation.
+- When the player LOOKs at the current room, describe what they see — use the location summary, discovered features, present NPCs, and current conditions. Add new details as discovered_features_add.
+- When the player MOVEs, you may create a new location or move to an existing one. Always set current_location_id. If creating, also set create_location.
+- INVENTORY is common-sense only. The player can carry small/medium items. Refuse absurd pickups narratively.
+- NPCs are voiced by you. Stay in character for each one. Update their npc_updates when their mood or intent changes from the interaction.
+- Be a GREAT storyteller. Create tension, atmosphere, surprises. Reveal secrets gradually. Reward clever play.
+- Keep the game MOVING. If the player does something reasonable, make it work and advance the story. Don't block progress with arbitrary puzzle gates.
+- The "speaker" field is normally "dm". When an NPC is the primary voice in the narration (direct dialog), set it to the npc_id so the UI can show their portrait.
+"""
+
+
 CREATION_SYSTEM_PROMPT = """You are the Author / DM. The interview is complete. You will now do your hidden PREP for the game — the same prep a tabletop GM does in private before the players arrive.
 
 You are given the world state captured from the interview (title, tone, visual style, player, premise, starting location concept, interview summary, plot seeds). Use ALL of it.
 
 Your job, in ONE response, is to:
 
-1. CREATE THE STARTING LOCATION as a structured entry. Be concrete: name it, summarize it, write a rich image_prompt that an image generator can paint from (describe lighting, mood, layout, key props — not a list of objects but a painterly description). List a few "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there at the moment of opening.
+1. CREATE THE STARTING LOCATION as a structured entry. Be concrete: name it, summarize it, and write a rich image_prompt. The image_prompt is CRITICAL — it becomes the visual ground truth for this location. The player will see a painted scene based on this description and will examine every detail closely. Write it as a vivid painterly description including:
+   - The physical space, lighting, mood, atmosphere
+   - Specific props and objects (documents on a desk, items on shelves, stains, wear patterns)
+   - Environmental storytelling — visual clues that hint at your secrets and planned beats (a half-open drawer, a photograph, a specific book title, a mark on the wall)
+   - Any NPCs present and what they're doing physically
+   - Details that reward the observant player — not everything should be obvious
+   List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
 2. CREATE OPENING NPCs ONLY. The starting scene may have NPCs visibly present (a bartender behind the bar, a cellmate in the cell, a stranger at the next table). Create those, and ONLY those — do not create characters who aren't in the opening scene. Most games start with 0–2 NPCs visible. Some start with none (player alone in an office). It's fine to have zero.
 
@@ -421,13 +532,271 @@ class DungeonMaster(BaseAgent):
             ws["plot_threads"] = threads
 
     # ------------------------------------------------------------------ #
-    # Play phase (stub — implemented next)
+    # Play phase
     # ------------------------------------------------------------------ #
 
+    MAX_PLAY_HISTORY = 20  # keep last N exchanges in context
+
+    def narrate_opening(self):
+        """Fire a DM turn that narrates the opening scene (no player input)."""
+        if self.phase != self.PHASE_PLAY:
+            return
+        if not self.connected:
+            self._result_queue.put({
+                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
+            })
+            return
+        self._run_threaded(self._process_play_turn, None)
+
     def _process_play_turn(self, user_text):
-        # TODO: see design/text_adventure_design.md sections "DM agent" and
-        # "Per-turn flow". Intent parse -> resolve -> state diff.
-        self._result_queue.put({
-            "response_text": "[Play mode is under construction. Your message was: "
-                             + user_text[:200] + "]"
-        })
+        try:
+            context_msg = self._build_play_context(user_text)
+
+            if not hasattr(self, "_play_history"):
+                self._play_history = []
+
+            self._play_history.append(
+                {"role": "user", "parts": [{"text": context_msg}]}
+            )
+            # Trim to keep context manageable
+            if len(self._play_history) > self.MAX_PLAY_HISTORY:
+                self._play_history = self._play_history[-self.MAX_PLAY_HISTORY:]
+
+            raw = self._call_text(PLAY_SYSTEM_PROMPT, self._play_history)
+            self._play_history.append(
+                {"role": "model", "parts": [{"text": raw}]}
+            )
+
+            parsed = json.loads(_strip_json_fences(raw))
+            self._apply_play_changes(parsed)
+
+            self._result_queue.put(parsed)
+
+        except json.JSONDecodeError:
+            _log("Play turn JSON parse error")
+            self._result_queue.put({
+                "narration": "[The DM stumbles over their words. Try again.]",
+                "speaker": "dm",
+            })
+        except Exception as e:
+            _log(f"Play turn error: {e}")
+            self._result_queue.put({
+                "narration": f"[DM error: {str(e)[:200]}]",
+                "speaker": "dm",
+            })
+
+    def _build_play_context(self, user_text):
+        ws = self.world_state
+        loc_id = ws.get("current_location_id")
+        loc = ws.get("locations", {}).get(loc_id, {}) if loc_id else {}
+        npcs = ws.get("npcs", {})
+        present_npcs = {
+            nid: npcs[nid] for nid in loc.get("present_npc_ids", [])
+            if nid in npcs
+        }
+
+        sections = []
+
+        # Game identity
+        meta = ws.get("meta", {})
+        sections.append(
+            f"GAME: {meta.get('title', 'Untitled')}\n"
+            f"Tone: {meta.get('tone', '')}\n"
+            f"Visual style: {meta.get('visual_style', '')}"
+        )
+
+        # Current location
+        image_prompt = loc.get("image_prompt", "")
+        sections.append(
+            f"CURRENT LOCATION: {loc.get('name', loc_id or '(unknown)')}\n"
+            f"Summary: {loc.get('summary', '')}\n"
+            f"Scene image (what the player sees painted on screen): {image_prompt}\n"
+            f"Discovered features: {', '.join(loc.get('discovered_features', []) or ['(none)'])}\n"
+            f"Events here: {loc.get('events_log_summary', '') or '(none yet)'}"
+        )
+
+        # Present NPCs
+        if present_npcs:
+            npc_lines = []
+            for nid, npc in present_npcs.items():
+                npc_lines.append(
+                    f"  {npc.get('name', nid)} (id: {nid}): "
+                    f"{npc.get('public_persona', '')} | "
+                    f"Intent: {npc.get('current_intent', '')} | "
+                    f"Mood toward player: {npc.get('mood_toward_player', '')} | "
+                    f"Known: {npc.get('known_to_player', False)} | "
+                    f"Dialog so far: {npc.get('dialog_summary_with_player', '') or '(none)'}"
+                )
+            sections.append("NPCs PRESENT:\n" + "\n".join(npc_lines))
+        else:
+            sections.append("NPCs PRESENT: (none)")
+
+        # Player
+        player = ws.get("player", {})
+        inv = player.get("inventory", [])
+        inv_str = ", ".join(inv) if inv else "(empty)"
+        sections.append(
+            f"PLAYER: {player.get('name', 'Unknown')}\n"
+            f"Inventory: {inv_str}"
+        )
+
+        # Known locations (for move validation)
+        known_locs = [
+            f"  {lid}: {ldata.get('name', lid)}"
+            for lid, ldata in ws.get("locations", {}).items()
+        ]
+        if known_locs:
+            sections.append("KNOWN LOCATIONS:\n" + "\n".join(known_locs))
+
+        # Plot threads the player knows about
+        known_threads = [
+            t for t in ws.get("plot_threads", [])
+            if t.get("known_to_player")
+        ]
+        if known_threads:
+            thread_lines = [
+                f"  [{t.get('status', '?')}] {t.get('summary', '')}"
+                for t in known_threads
+            ]
+            sections.append("ACTIVE PLOT THREADS (player knows):\n" + "\n".join(thread_lines))
+
+        # DM bible (hidden from player, visible to DM)
+        bible = ws.get("dm_bible", {})
+        secrets = bible.get("secrets", [])
+        if secrets:
+            secret_lines = [
+                f"  {'[REVEALED] ' if s.get('revealed') else ''}"
+                f"(id: {s.get('id', '?')}) {s.get('fact', '')}"
+                for s in secrets
+            ]
+            sections.append("DM BIBLE — SECRETS:\n" + "\n".join(secret_lines))
+        beats = bible.get("planned_beats", [])
+        if beats:
+            sections.append("DM BIBLE — PLANNED BEATS:\n  " + "\n  ".join(beats))
+        scratchpad = bible.get("scratchpad", "")
+        if scratchpad:
+            sections.append(f"DM BIBLE — SCRATCHPAD:\n{scratchpad}")
+
+        # Hidden plot threads
+        hidden_threads = [
+            t for t in ws.get("plot_threads", [])
+            if not t.get("known_to_player")
+        ]
+        if hidden_threads:
+            thread_lines = [
+                f"  [{t.get('status', '?')}] {t.get('summary', '')}"
+                for t in hidden_threads
+            ]
+            sections.append("HIDDEN PLOT THREADS (player doesn't know yet):\n" + "\n".join(thread_lines))
+
+        # DM instructions (premise, interview summary)
+        dm_inst = ws.get("dm_instructions", {})
+        if dm_inst.get("interview_summary"):
+            sections.append(f"INTERVIEW SUMMARY:\n{dm_inst['interview_summary']}")
+
+        # The player's input (or opening-scene directive)
+        if user_text is None:
+            sections.append(
+                "PLAYER INPUT: [This is the very first turn. The player has just arrived. "
+                "Narrate the opening scene — describe where they are, what they see, "
+                "the atmosphere, any NPCs present. Set the mood and hook them into the story. "
+                "Do NOT ask the player a question; just paint the scene.]"
+            )
+        else:
+            sections.append(f"PLAYER INPUT: {user_text}")
+
+        return "\n\n".join(sections)
+
+    def _apply_play_changes(self, parsed):
+        ws = self.world_state
+        changes = parsed.get("state_changes")
+        if not changes:
+            return
+
+        # New location creation (must happen before current_location_id change)
+        new_loc = changes.get("create_location")
+        if isinstance(new_loc, dict) and new_loc.get("id"):
+            loc_id = new_loc["id"]
+            new_loc.setdefault("image_path", None)
+            new_loc.setdefault("image_dirty", True)
+            new_loc.setdefault("present_npc_ids", [])
+            new_loc.setdefault("discovered_features", [])
+            new_loc.setdefault("events_log_summary", "")
+            ws.setdefault("locations", {})[loc_id] = new_loc
+            _log(f"Created new location: {loc_id}")
+
+        # Location change
+        new_loc_id = changes.get("current_location_id")
+        if new_loc_id and new_loc_id in ws.get("locations", {}):
+            ws["current_location_id"] = new_loc_id
+            _log(f"Moved to: {new_loc_id}")
+
+        # Image dirty flags
+        for lid in changes.get("image_dirty") or []:
+            loc = ws.get("locations", {}).get(lid)
+            if loc:
+                loc["image_dirty"] = True
+
+        # Inventory
+        player = ws.setdefault("player", {})
+        inv = player.setdefault("inventory", [])
+        for item_entry in changes.get("inventory_add") or []:
+            if isinstance(item_entry, dict):
+                inv.append(item_entry.get("item", str(item_entry)))
+            else:
+                inv.append(str(item_entry))
+        for item_name in changes.get("inventory_remove") or []:
+            try:
+                inv.remove(item_name)
+            except ValueError:
+                pass
+
+        # Discovered features for current location
+        cur_loc_id = ws.get("current_location_id")
+        cur_loc = ws.get("locations", {}).get(cur_loc_id, {}) if cur_loc_id else {}
+        for feat in changes.get("discovered_features_add") or []:
+            existing = cur_loc.setdefault("discovered_features", [])
+            if feat not in existing:
+                existing.append(feat)
+
+        # NPC updates
+        for npc_id, npc_patch in (changes.get("npc_updates") or {}).items():
+            npc = ws.get("npcs", {}).get(npc_id)
+            if npc and isinstance(npc_patch, dict):
+                npc.update(npc_patch)
+
+        # Reveal secrets
+        bible = ws.get("dm_bible", {})
+        for secret_id in changes.get("reveal_secret") or []:
+            for s in bible.get("secrets", []):
+                if s.get("id") == secret_id:
+                    s["revealed"] = True
+                    _log(f"Secret revealed: {secret_id}")
+
+        # Update plot threads
+        for thread_update in changes.get("update_threads") or []:
+            tid = thread_update.get("id")
+            if not tid:
+                continue
+            found = False
+            for t in ws.get("plot_threads", []):
+                if t.get("id") == tid:
+                    t.update(thread_update)
+                    found = True
+                    break
+            if not found:
+                ws.setdefault("plot_threads", []).append(thread_update)
+
+        # Bible scratchpad append
+        append_text = changes.get("bible_append")
+        if append_text:
+            existing = bible.get("scratchpad", "")
+            bible["scratchpad"] = (existing + "\n" + append_text).strip()
+
+        # Events log append
+        log_text = changes.get("events_log_append")
+        if log_text and cur_loc:
+            existing = cur_loc.get("events_log_summary", "")
+            cur_loc["events_log_summary"] = (
+                (existing + " " + log_text).strip()
+            )
