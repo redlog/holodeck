@@ -71,6 +71,14 @@ class DungeonMaster(BaseAgent):
         else:
             self.phase = self.PHASE_INTERVIEW
 
+    def get_play_history(self):
+        """Return the play-phase conversation history (for save)."""
+        return list(getattr(self, "_play_history", []))
+
+    def set_play_history(self, history):
+        """Restore play-phase conversation history (from load)."""
+        self._play_history = list(history) if history else []
+
     def _world_already_seeded(self):
         return bool(self.world_state.get("current_location_id")
                     and self.world_state.get("locations"))

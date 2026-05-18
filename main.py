@@ -64,7 +64,10 @@ def run_menu(screen, window, clock):
                 slug, world_state = create_game(value)
                 return slug, world_state
             if action == "load":
-                world_state = load_game(value)
+                result = load_game(value)
+                if result is None:
+                    continue
+                world_state, _session = result
                 return value, world_state
 
         menu.render()

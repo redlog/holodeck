@@ -181,7 +181,8 @@ def list_games():
     return games
 
 
-def save_game(world_state, game_slug, slot="autosave"):
+def save_game(world_state, game_slug, slot="autosave",
+              play_history=None, console_lines=None):
     world_state["meta"]["last_saved"] = datetime.now().isoformat()
     world_state["meta"]["last_played"] = datetime.now().isoformat()
 
@@ -195,6 +196,12 @@ def save_game(world_state, game_slug, slot="autosave"):
     filename.parent.mkdir(parents=True, exist_ok=True)
     to_write = _obfuscate_for_save(world_state)
 
+    if play_history is not None:
+        to_write["_session"] = {
+            "play_history": play_history,
+            "console_lines": console_lines or [],
+        }
+
     temp = filename.with_suffix(".json.tmp")
     with open(temp, "w", encoding="utf-8") as f:
         json.dump(to_write, f, indent=2, ensure_ascii=False)
@@ -202,6 +209,9 @@ def save_game(world_state, game_slug, slot="autosave"):
 
 
 def load_game(game_slug, slot="autosave"):
+    """Load a game save. Returns (world_state, session_data) where
+    session_data is a dict with play_history and console_lines (may be None
+    if the save predates session persistence)."""
     if slot == "autosave":
         filename = _game_file(game_slug)
     else:
@@ -210,7 +220,8 @@ def load_game(game_slug, slot="autosave"):
         return None
     with open(filename, "r", encoding="utf-8") as f:
         ws = json.load(f)
-    return _deobfuscate_after_load(ws)
+    session = ws.pop("_session", None)
+    return _deobfuscate_after_load(ws), session
 
 
 def get_save_slots(game_slug):

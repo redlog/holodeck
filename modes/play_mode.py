@@ -22,6 +22,8 @@ import pygame
 
 from config import INTERNAL_WIDTH, INTERNAL_HEIGHT
 from rendering.ui import TextInput, get_font
+from rendering.save_load_ui import SaveLoadUI
+from world.bible import save_game, load_game, get_save_slots
 
 
 def _log(msg):
@@ -113,6 +115,10 @@ class PlayMode:
 
         self._recalc_layout()
 
+        # Save/Load UI
+        self._save_load_ui = SaveLoadUI(surface)
+        self._load_pending = None  # set to slot name when a load is confirmed
+
         # Exit signaling
         self.quit_requested = False
         self.menu_requested = False
@@ -180,9 +186,25 @@ class PlayMode:
         self.text_input.update(dt)
 
         for event in events:
+            # Save/Load UI intercepts all input while active
+            if self._save_load_ui.active:
+                result = self._save_load_ui.handle_event(event)
+                if result and result != "consumed":
+                    self._handle_save_load_result(result)
+                continue
+
+            # F5 = save, F9 = load
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F5:
+                slots = get_save_slots(self._slug)
+                self._save_load_ui.open_save(slots)
+                continue
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
+                slots = get_save_slots(self._slug)
+                self._save_load_ui.open_load(slots)
+                continue
+
             if event.type == pygame.MOUSEWHEEL:
                 mx, my = pygame.mouse.get_pos()
-                # Scale to internal coords
                 from config import DISPLAY_SCALE
                 mx, my = mx // DISPLAY_SCALE, my // DISPLAY_SCALE
                 if self._drawer_open and mx >= self._drawer_rect.x:
@@ -217,6 +239,7 @@ class PlayMode:
         self._render_drawer_tab()
         if self._drawer_open:
             self._render_drawer()
+        self._save_load_ui.render()
 
     # ------------------------------------------------------------------ #
     # Rendering
@@ -605,11 +628,81 @@ class PlayMode:
         self._scroll_offset = 0
 
     def _autosave(self):
-        from world.bible import save_game
         try:
             save_game(self.world_state, self._slug)
         except Exception as e:
             _log(f"autosave failed: {e}")
+
+    def _handle_save_load_result(self, result):
+        if result == "cancelled":
+            return
+        action, slot = result
+        if action == "save":
+            try:
+                save_game(
+                    self.world_state, self._slug, slot,
+                    play_history=self.dm.get_play_history(),
+                    console_lines=self.console_lines,
+                )
+                self._add_lines("system", f"Game saved to slot: {slot}")
+            except Exception as e:
+                _log(f"save failed: {e}")
+                self._add_lines("system", f"Save failed: {e}")
+        elif action == "load":
+            try:
+                loaded = load_game(self._slug, slot)
+                if loaded is None:
+                    self._add_lines("system", "Save not found.")
+                    return
+                world_state, session = loaded
+                if world_state is None:
+                    self._add_lines("system", "Save not found.")
+                    return
+                self._apply_loaded_state(world_state, session)
+                self._add_lines("system", f"Loaded save: {slot}")
+            except Exception as e:
+                _log(f"load failed: {e}")
+                self._add_lines("system", f"Load failed: {e}")
+
+    def _apply_loaded_state(self, world_state, session):
+        """Replace all game state with data from a loaded save."""
+        self.world_state.clear()
+        self.world_state.update(world_state)
+
+        # Restore DM conversation history
+        if session and session.get("play_history"):
+            self.dm.set_play_history(session["play_history"])
+        else:
+            self.dm.set_play_history([])
+
+        # Restore console scrollback
+        if session and session.get("console_lines"):
+            self.console_lines = [
+                (entry[0], entry[1])
+                for entry in session["console_lines"]
+                if isinstance(entry, (list, tuple)) and len(entry) == 2
+            ]
+        else:
+            self.console_lines = []
+
+        # Reset visual caches so images reload from new state
+        self._room_surface = None
+        self._room_loaded_path = None
+        self._portrait_surface = None
+        self._portrait_loaded_path = None
+        self._item_sprites.clear()
+        self._item_sprites_loaded.clear()
+
+        # Reset scroll and drawer
+        self._scroll_offset = 0
+        self._drawer_scroll = 0
+        self._selected_item_idx = None
+        self._drawer_open = False
+        self._recalc_layout()
+        self._waiting = False
+
+        # Reload item sprites from restored inventory
+        self._load_existing_item_sprites()
 
     # ------------------------------------------------------------------ #
     # Imagery polling
