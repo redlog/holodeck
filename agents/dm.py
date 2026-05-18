@@ -310,7 +310,8 @@ class DungeonMaster(BaseAgent):
     # Play phase
     # ------------------------------------------------------------------ #
 
-    MAX_PLAY_HISTORY = 20  # keep last N exchanges in context
+    RECENT_HISTORY = 6     # last N exchanges get full context
+    MAX_PLAY_HISTORY = 20  # total exchanges kept (older ones are trimmed)
 
     def narrate_opening(self):
         """Fire a DM turn that narrates the opening scene (no player input)."""
@@ -333,8 +334,7 @@ class DungeonMaster(BaseAgent):
             self._play_history.append(
                 {"role": "user", "parts": [{"text": context_msg}]}
             )
-            if len(self._play_history) > self.MAX_PLAY_HISTORY:
-                self._play_history = self._play_history[-self.MAX_PLAY_HISTORY:]
+            self._trim_history()
 
             raw = self._call_text(PLAY_SYSTEM, self._play_history)
             self._play_history.append(
@@ -481,6 +481,62 @@ class DungeonMaster(BaseAgent):
         result["speaker"] = npc_id
         result["intent"] = initial.get("intent", {})
         return result
+
+    def _trim_history(self):
+        """Keep history bounded and strip world-state bloat from older entries.
+
+        The most recent RECENT_HISTORY entries keep their full context (world
+        state + player input). Older entries are compacted to just the player
+        input and DM narration — the current turn's context already has the
+        up-to-date world state, so repeating it in old entries is pure waste.
+
+        Beyond MAX_PLAY_HISTORY total entries, the oldest are dropped entirely.
+        """
+        h = self._play_history
+
+        # Hard cap: drop oldest entries beyond MAX_PLAY_HISTORY
+        if len(h) > self.MAX_PLAY_HISTORY:
+            h[:] = h[-self.MAX_PLAY_HISTORY:]
+
+        # Compact everything older than RECENT_HISTORY entries from the end.
+        # We count entries (not pairs) since NPC dispatch adds extra entries.
+        cutoff = len(h) - self.RECENT_HISTORY
+        for i in range(max(0, cutoff)):
+            entry = h[i]
+            text = entry.get("parts", [{}])[0].get("text", "")
+            if entry["role"] == "user":
+                h[i] = {"role": "user", "parts": [{"text": self._compact_user_entry(text)}]}
+            elif entry["role"] == "model":
+                h[i] = {"role": "model", "parts": [{"text": self._compact_model_entry(text)}]}
+
+    @staticmethod
+    def _compact_user_entry(text):
+        """Strip world-state preamble from an old user message, keep player input."""
+        # The player input is always at the end after "PLAYER INPUT: "
+        marker = "PLAYER INPUT: "
+        idx = text.rfind(marker)
+        if idx >= 0:
+            return marker + text[idx + len(marker):]
+        # NPC dispatch messages — keep them short but intact
+        if "NPC RESPONSE:" in text:
+            # Extract just the speech and player input lines
+            lines = text.split("\n")
+            kept = [l for l in lines if l.strip().startswith(("speech:", "PLAYER INPUT:"))]
+            return "\n".join(kept) if kept else text[:200]
+        return text[:200]
+
+    @staticmethod
+    def _compact_model_entry(text):
+        """Strip state_changes JSON bloat from old DM responses, keep narration."""
+        try:
+            parsed = json.loads(_strip_json_fences(text))
+            narration = parsed.get("narration", "")
+            speaker = parsed.get("speaker", "dm")
+            # Reconstruct a minimal version
+            compact = {"narration": narration, "speaker": speaker}
+            return json.dumps(compact)
+        except (json.JSONDecodeError, ValueError):
+            return text[:300]
 
     def _build_play_context(self, user_text):
         ws = self.world_state
