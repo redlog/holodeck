@@ -12,27 +12,13 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
+from agents.prompts import SCENERY_TEMPLATE
 from config import SCENERY_MODEL
 
 
 def _log(msg):
     print(f"[SCENERY] {msg}", file=sys.stderr, flush=True)
 
-
-BACKGROUND_PROMPT_TEMPLATE = """{visual_style}.
-
-A painted background for a graphical text adventure game. Paint this scene:
-
-{scene}
-
-{context}
-
-The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Treat the camera as a fixed three-quarter overhead view typical of point-and-click adventure games.
-
-Every detail in this painting matters — players will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
-
-Render the entire frame with care — every region should be finished painted artwork edge to edge. Do NOT add letterbox bars, vignettes, or framing borders.
-"""
 
 
 def _build_scenery_context(game_context):
@@ -107,7 +93,7 @@ class SceneryAgent(BaseAgent):
             context = _build_scenery_context(game_context)
 
             _log(f"[{location_id}] painting scene...")
-            prompt = BACKGROUND_PROMPT_TEMPLATE.format(
+            prompt = SCENERY_TEMPLATE.format(
                 visual_style=visual_style or "painterly adventure-game art",
                 scene=scene,
                 context=context,

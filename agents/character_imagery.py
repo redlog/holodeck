@@ -12,6 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
+from agents.prompts import PORTRAIT_TEMPLATE
 from config import GEMINI_IMAGE_MODEL
 
 
@@ -63,13 +64,9 @@ class CharacterImageryAgent(BaseAgent):
             self._pending.pop(char_id, None)
 
     def _generate_portrait(self, description, visual_style):
-        prompt = (
-            f"{visual_style}. "
-            f"Character portrait for a graphical text adventure. "
-            f"Head and shoulders, three-quarter view, expressive face with clear features. "
-            f"Background must be a single flat solid color that complements the character. "
-            f"NO gradients, NO patterns, NO scenery, NO text or labels. "
-            f"Character: {description}"
+        prompt = PORTRAIT_TEMPLATE.format(
+            visual_style=visual_style or "painterly adventure-game art",
+            description=description,
         )
         return self._call_image(prompt, aspect_ratio="1:1")
 
