@@ -91,6 +91,7 @@ class PlayMode:
         # Loaded pygame surfaces (cached so we don't reload PNGs every frame).
         self._room_surface = None
         self._room_loaded_path = None
+        self._room_loaded_loc_id = None
         self._portrait_surface = None
         self._portrait_loaded_path = None
         self._speaker_id = "player"  # whose portrait is shown
@@ -255,6 +256,12 @@ class PlayMode:
         loc_id = self.world_state.get("current_location_id")
         loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
         path = loc.get("image_path")
+
+        # Clear stale surface when the player moves to a different room
+        if loc_id != self._room_loaded_loc_id:
+            self._room_surface = None
+            self._room_loaded_path = None
+            self._room_loaded_loc_id = loc_id
 
         # Reload if path changed or room rect width changed (drawer toggle)
         need_reload = (path and (path != self._room_loaded_path
@@ -768,6 +775,7 @@ class PlayMode:
         # Reset visual caches so images reload from new state
         self._room_surface = None
         self._room_loaded_path = None
+        self._room_loaded_loc_id = None
         self._portrait_surface = None
         self._portrait_loaded_path = None
         self._item_sprites.clear()
