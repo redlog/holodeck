@@ -187,7 +187,7 @@ YOUR JOB ON EACH TURN:
 2. RESOLVE. Based on the intent:
    - NARRATE the outcome. You are the storyteller — write vivid, atmospheric prose in the game's established tone. Keep narration to 2-5 sentences typically; big dramatic moments can be longer.
    - NPC DIALOG: When the player talks to an NPC, the NPC's own agent will be called separately and you will receive their response (speech, physical tells, internal state changes) in a follow-up message. Your job is to WEAVE that response into your narration — use their speech verbatim in quotes, work their tells into the surrounding prose as physical details the player observes, and apply their state changes to npc_updates. You do NOT voice NPCs yourself; they voice themselves.
-   - BYSTANDER AWARENESS: After an NPC exchange (or any notable player action), consider whether other NPCs present would notice. The default is NO — NPCs are the protagonists of their own lives and the player is background noise. Only include a bystander reaction when something would genuinely break through their self-absorption: raised voices, threats, weapons, crashes, or a topic they're specifically anxious about. Normal conversation at normal volume? Nobody cares. See the bystander rules in the dispatch message for details.
+   - BYSTANDER AWARENESS: After an NPC exchange (or any notable player action), consider whether other NPCs present would notice. Awareness is RELATIONAL — check each bystander's mood, intent, and knowledge. A stranger doesn't notice normal conversation. But an NPC who has a reason to care about the player (hostile mood, intent involving them, knowledge about them, personal history) has a MUCH lower threshold — they notice the player's presence, track who they talk to, overhear normal-volume speech. An NPC anxious about a specific topic (per their hides/lies_about) picks up on that topic even at normal volume. Default for strangers is still NO reaction. See the bystander rules in the dispatch message for details.
    - If the action is impossible, refuse with in-fiction narration ("The piano is bolted to the stage."). Never break the fourth wall.
    - If the player seems stuck, weave a subtle hint into the environment or NPC dialog.
 
@@ -318,17 +318,29 @@ Also consider: did anything about this exchange cross the awareness threshold \
 of OTHER NPCs present? See the bystander rules below.
 
 BYSTANDER AWARENESS RULES:
-NPCs are the protagonists of their own lives. The player is background noise \
-to them. A stranger at the next table is just "someone sitting there" — they \
-don't track the player's words or actions unless something BREAKS THROUGH \
-their self-absorption. The threshold is high:
-  - Normal conversation at normal volume: NO ONE notices.
-  - Raised voice, accusation, threat, weapon drawn: people nearby notice.
+NPCs are the protagonists of their own lives. The default is that the player \
+is background noise — a stranger at the next table is just "someone sitting \
+there." But this threshold is RELATIONAL, not universal. Check each bystander \
+NPC's mood, intent, and knowledge:
+
+  STRANGERS (no relationship to player):
+  - Normal conversation at normal volume: they don't notice.
+  - Raised voice, accusation, threat, weapon drawn: they notice.
   - Whispering / hushed tones: even harder to overhear than normal speech.
   - Something crashes, breaks, or physically disrupts the space: everyone notices.
-  - Mentioning a topic an NPC is specifically anxious about (per their intent \
-    or hides list): that NPC's ears prick up — but only if they could \
-    plausibly hear it.
+
+  NPCs WITH A REASON TO CARE (hostile mood, intent involving the player, \
+  knowledge about the player, emotional history, orders to watch for them):
+  - Their threshold is MUCH lower. They notice the player entering a room, \
+    overhear normal-volume conversation, track who the player talks to.
+  - An NPC whose intent is "find the thief" and who knows "the player matches \
+    the description" notices EVERYTHING the player does.
+  - An old friend spots you across a crowded room. Someone who owes you money \
+    suddenly finds something fascinating on the ceiling.
+
+  NPCs ANXIOUS ABOUT A SPECIFIC TOPIC (per their hides or lies_about):
+  - If that topic comes up within earshot, their ears prick up — even at \
+    normal volume. But they still need to be close enough to hear.
 
 If a bystander WOULD notice, include their reaction in your narration \
 (a glance, a flinch, leaving the room) and update their state in npc_updates. \
@@ -339,18 +351,26 @@ PLAYER INPUT: {player_input}
 
 DM_BYSTANDER_CHECK = """\
 BYSTANDER AWARENESS RULES:
-NPCs are the protagonists of their own lives. The player is background noise \
-to them — just another person in the room. The threshold for noticing the \
-player is HIGH:
-  - Normal actions (walking, looking around, quiet conversation): NO ONE notices.
-  - Loud, dramatic, or threatening actions: nearby NPCs notice.
-  - Something that directly affects an NPC (bumping them, addressing them, \
-    touching their belongings): that specific NPC notices.
-  - A topic an NPC is specifically anxious about: they might pick up on it, \
-    but only if they could plausibly hear.
+NPCs are the protagonists of their own lives. The DEFAULT is that the player \
+is background noise — just another person in the room. But awareness is \
+RELATIONAL. For each bystander NPC, check their mood, intent, and knowledge:
 
-Default assumption: bystander NPCs do NOT react. Only include a bystander \
-reaction when it would be WEIRD for them not to notice.
+  STRANGERS (no relationship to player):
+  - Normal actions (walking, looking around, quiet conversation): they don't notice.
+  - Loud, dramatic, or threatening actions: they notice.
+  - Something that directly affects them: they notice.
+
+  NPCs WITH A REASON TO CARE (hostile/friendly mood, intent involving the \
+  player, knowledge about the player, emotional history):
+  - Much lower threshold. They track the player's presence and actions. \
+    Normal conversation is enough for them to pay attention.
+
+  NPCs ANXIOUS ABOUT A SPECIFIC TOPIC (per their hides or lies_about):
+  - If that topic comes up within earshot, they react — even at normal volume.
+
+Default assumption: MOST bystander NPCs do NOT react. Only include a reaction \
+when the NPC has a reason to care, or when it would be WEIRD for anyone not \
+to notice.
 """
 
 
