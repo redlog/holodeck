@@ -152,8 +152,8 @@ class BaseAgent:
             ),
         )
         usage = response.usage_metadata
-        _log_tokens(
-            context, image_model,
+        self._log_tokens(
+            context,
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
             getattr(usage, "cached_content_token_count", 0) or 0,
