@@ -32,6 +32,8 @@ if _missing:
     print("Define them in .env and try again.", file=sys.stderr)
     sys.exit(1)
 
+DEBUG = os.getenv("DEBUG", "false").strip().lower() in ("1", "true", "yes")
+
 GEMINI_DM_MODEL = os.environ["GEMINI_DM_MODEL"]
 GEMINI_NPC_MODEL = os.environ["GEMINI_NPC_MODEL"]
 GEMINI_IMAGE_MODEL = os.environ["GEMINI_IMAGE_MODEL"]

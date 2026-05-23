@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 import sys
 import threading
 from datetime import datetime
@@ -13,6 +14,10 @@ def _log(msg):
     print(f"[AGENT] {msg}", file=sys.stderr, flush=True)
 
 
+def _now_ts():
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class BaseAgent:
     def __init__(self, model, temperature=0.9, game_dir=None):
         self._model = model
@@ -22,10 +27,18 @@ class BaseAgent:
         self._busy = False
         self._client = self._init_client()
 
-    def _log_tokens(self, context, tokens_in, tokens_out, tokens_cached=0):
+        # Read debug flag here so it reflects .env at agent creation time.
+        self._debug = os.getenv("DEBUG", "false").strip().lower() in ("1", "true", "yes")
+
+    # ------------------------------------------------------------------ #
+    # Token logging
+    # ------------------------------------------------------------------ #
+
+    def _log_tokens(self, context, tokens_in, tokens_out, tokens_cached=0, ts=None):
         if not self._game_dir:
             return
         try:
+            ts = ts or _now_ts()
             log_path = self._game_dir / "token_log.csv"
             write_header = not log_path.exists()
             with log_path.open("a", newline="", encoding="utf-8") as f:
@@ -33,7 +46,7 @@ class BaseAgent:
                 if write_header:
                     w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_cached", "tokens_out"])
                 w.writerow([
-                    datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    ts,
                     context or "",
                     self._model or "",
                     tokens_in,
@@ -42,6 +55,57 @@ class BaseAgent:
                 ])
         except Exception:
             pass
+
+    # ------------------------------------------------------------------ #
+    # AI prompt/response logging (debug mode only)
+    # ------------------------------------------------------------------ #
+
+    def _log_ai(self, ts, context, label, content):
+        """Write a prompt or response to <game_dir>/ai_log/ when DEBUG=true."""
+        if not self._debug or not self._game_dir:
+            return
+        try:
+            ai_log_dir = self._game_dir / "ai_log"
+            ai_log_dir.mkdir(exist_ok=True)
+            ts_safe = ts.replace(":", "-")
+            ctx_safe = re.sub(r"[^a-zA-Z0-9_-]", "_", context or "unknown")[:40].strip("_")
+            filename = f"{ts_safe}_{ctx_safe}_{label}.txt"
+            (ai_log_dir / filename).write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _format_text_prompt(system_prompt, contents):
+        """Render system prompt + message history as readable plain text."""
+        parts = []
+        if system_prompt:
+            parts.append(f"=== SYSTEM ===\n{system_prompt}")
+        parts.append("=== MESSAGES ===")
+        for msg in contents:
+            if isinstance(msg, str):
+                parts.append(f"[user]: {msg}")
+            elif isinstance(msg, dict):
+                role = msg.get("role", "?")
+                texts = []
+                for p in (msg.get("parts") or []):
+                    if isinstance(p, dict):
+                        t = p.get("text")
+                        if t:
+                            texts.append(t)
+                        elif p.get("inline_data"):
+                            texts.append("<image data>")
+                    elif isinstance(p, str):
+                        texts.append(p)
+                    else:
+                        texts.append(f"<{type(p).__name__}>")
+                parts.append(f"[{role}]: {''.join(texts)}")
+            else:
+                parts.append(f"<{type(msg).__name__}>")
+        return "\n\n".join(parts)
+
+    # ------------------------------------------------------------------ #
+    # Client
+    # ------------------------------------------------------------------ #
 
     def _init_client(self):
         api_key = os.getenv("GEMINI_API_KEY")
@@ -85,7 +149,14 @@ class BaseAgent:
             types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
         ]
 
+    # ------------------------------------------------------------------ #
+    # API calls
+    # ------------------------------------------------------------------ #
+
     def _call_text(self, system_prompt, contents, response_mime="application/json", context="", cached_content=None):
+        ts = _now_ts()
+        self._log_ai(ts, context, "input", self._format_text_prompt(system_prompt, contents))
+
         if cached_content:
             config = types.GenerateContentConfig(
                 cached_content=cached_content,
@@ -111,7 +182,9 @@ class BaseAgent:
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
             getattr(usage, "cached_content_token_count", 0) or 0,
+            ts=ts,
         )
+        self._log_ai(ts, context, "output", response.text or "")
         return response.text
 
     def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9", context=""):
@@ -119,6 +192,8 @@ class BaseAgent:
         # silent fallbacks. Imagen models use the Imagen image API (which
         # honors aspect_ratio); Gemini image models use generate_content.
         image_model = self._model
+        ts = _now_ts()
+        self._log_ai(ts, context, "input", prompt)
 
         if image_model.startswith("imagen"):
             response = self._client.models.generate_images(
@@ -129,9 +204,11 @@ class BaseAgent:
                     aspect_ratio=aspect_ratio,
                 ),
             )
-            self._log_tokens(context, 0, 0)
+            self._log_tokens(context, 0, 0, ts=ts)
             if response.generated_images:
+                self._log_ai(ts, context, "output", f"[image generated via {image_model}]")
                 return response.generated_images[0].image.image_bytes
+            self._log_ai(ts, context, "output", "[no image returned]")
             return None
 
         contents = []
@@ -154,8 +231,11 @@ class BaseAgent:
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
             getattr(usage, "cached_content_token_count", 0) or 0,
+            ts=ts,
         )
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                self._log_ai(ts, context, "output", f"[image generated via {image_model}]")
                 return part.inline_data.data
+        self._log_ai(ts, context, "output", "[no image returned]")
         return None
