@@ -132,7 +132,8 @@ class PlayMode:
 
         # Load any existing item sprites from saved state
         self._load_existing_item_sprites()
-        # Regenerate any portraits that failed or are missing
+        # Regenerate any item sprites or portraits that failed or are missing
+        self._queue_missing_item_sprites()
         self._queue_missing_portraits()
 
         self._render_opening_beat()
@@ -184,6 +185,21 @@ class PlayMode:
                         self._item_sprites_loaded.add(sprite_path)
                     except Exception as e:
                         _log(f"Failed to load item sprite {sprite_path}: {e}")
+
+    def _queue_missing_item_sprites(self):
+        """Re-queue sprite generation for inventory items whose file is missing."""
+        if not self._item_agent:
+            return
+        inv = self.world_state.get("player", {}).get("inventory", [])
+        visual_style = self.world_state.get("meta", {}).get("visual_style", "")
+        for entry in inv:
+            if not isinstance(entry, dict):
+                continue
+            item_id = entry.get("item_id")
+            sprite_path = entry.get("sprite_path")
+            if item_id and not _portrait_file_exists(sprite_path):
+                _log(f"Missing sprite for '{item_id}', re-queuing generation")
+                self._item_agent.generate_sprite(item_id, entry, visual_style)
 
     def _queue_missing_portraits(self):
         """Kick off portrait generation for any character whose portrait is absent."""
