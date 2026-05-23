@@ -19,7 +19,7 @@ def _log(msg):
     print(f"[ITEMIMG] {msg}", file=sys.stderr, flush=True)
 
 
-SPRITE_SIZE = (64, 64)
+SPRITE_SIZE = (512, 512)
 
 
 class ItemImageryAgent(BaseAgent):

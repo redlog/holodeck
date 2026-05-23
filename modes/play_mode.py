@@ -74,6 +74,8 @@ COLOR_DRAWER_TAB_TEXT = (160, 155, 140)
 ITEM_SPRITE_SIZE = 48
 ITEM_ROW_HEIGHT = 58
 ITEM_PADDING = 8
+MODAL_IMG_SIZE = 460
+MODAL_PAD = 20
 
 
 class PlayMode:
@@ -108,9 +110,12 @@ class PlayMode:
         # Inventory drawer state
         self._drawer_open = False
         self._drawer_scroll = 0
-        self._selected_item_idx = None  # index into inventory for detail view
-        self._item_sprites = {}  # item_id -> pygame.Surface
+        self._item_sprites = {}  # item_id -> pygame.Surface (scaled to ITEM_SPRITE_SIZE)
         self._item_sprites_loaded = set()  # paths already loaded
+
+        # Item detail modal
+        self._item_modal_entry = None   # inventory entry dict being shown
+        self._item_modal_surface = None  # full-size pygame.Surface for that entry
 
         # Input
         input_y = INTERNAL_HEIGHT - INPUT_HEIGHT - INPUT_MARGIN
@@ -224,6 +229,15 @@ class PlayMode:
         self.text_input.update(dt)
 
         for event in events:
+            # Item modal intercepts all input while open
+            if self._item_modal_entry is not None:
+                if event.type == pygame.MOUSEBUTTONDOWN or (
+                    event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
+                ):
+                    self._item_modal_entry = None
+                    self._item_modal_surface = None
+                continue
+
             # Save/Load UI intercepts all input while active
             if self._save_load_ui.active:
                 result = self._save_load_ui.handle_event(event)
@@ -280,6 +294,8 @@ class PlayMode:
         self._render_drawer_tab()
         if self._drawer_open:
             self._render_drawer()
+        if self._item_modal_entry is not None:
+            self._render_item_modal()
         self._save_load_ui.render()
 
     # ------------------------------------------------------------------ #
@@ -418,7 +434,6 @@ class PlayMode:
 
     def _toggle_drawer(self):
         self._drawer_open = not self._drawer_open
-        self._selected_item_idx = None
         self._room_loaded_path = None  # force room image re-render at new width
         self._recalc_layout()
         self._rewrap_console()
@@ -487,13 +502,6 @@ class PlayMode:
         list_height = list_bottom - list_top
         max_visible = list_height // ITEM_ROW_HEIGHT
 
-        # If an item is selected, split: top half = list, bottom half = detail
-        if self._selected_item_idx is not None and 0 <= self._selected_item_idx < len(inv):
-            detail_h = 200
-            list_bottom = dr.bottom - detail_h
-            list_height = list_bottom - list_top
-            max_visible = max(1, list_height // ITEM_ROW_HEIGHT)
-
         self.surface.set_clip(pygame.Rect(dr.x, list_top, dr.width, list_height))
 
         start = self._drawer_scroll
@@ -509,12 +517,7 @@ class PlayMode:
             item_id = entry.get("item_id") if isinstance(entry, dict) else None
 
             row_rect = pygame.Rect(dr.x + 4, y, dr.width - 8, ITEM_ROW_HEIGHT)
-            hovered = row_rect.collidepoint(mx, my)
-            selected = (i == self._selected_item_idx)
-
-            if selected:
-                pygame.draw.rect(self.surface, COLOR_ITEM_SELECTED, row_rect, border_radius=4)
-            elif hovered:
+            if row_rect.collidepoint(mx, my):
                 pygame.draw.rect(self.surface, COLOR_ITEM_HOVER, row_rect, border_radius=4)
 
             # Sprite
@@ -538,7 +541,6 @@ class PlayMode:
             max_name_w = row_rect.right - name_x - 4
             name_surf = self.font_small.render(item_name, True, COLOR_ITEM_NAME)
             if name_surf.get_width() > max_name_w:
-                # Truncate with ellipsis
                 while name_surf.get_width() > max_name_w and len(item_name) > 3:
                     item_name = item_name[:-1]
                     name_surf = self.font_small.render(item_name + "…", True, COLOR_ITEM_NAME)
@@ -548,53 +550,75 @@ class PlayMode:
 
         self.surface.set_clip(None)
 
-        # Detail panel for selected item
-        if self._selected_item_idx is not None and 0 <= self._selected_item_idx < len(inv):
-            self._render_item_detail(inv[self._selected_item_idx], list_bottom)
+    def _open_item_modal(self, entry):
+        """Open the full-size item image modal for the given inventory entry."""
+        self._item_modal_entry = entry
+        self._item_modal_surface = None
+        sprite_path = entry.get("sprite_path") if isinstance(entry, dict) else None
+        if sprite_path:
+            try:
+                img = pygame.image.load(sprite_path).convert_alpha()
+                img = pygame.transform.smoothscale(img, (MODAL_IMG_SIZE, MODAL_IMG_SIZE))
+                self._item_modal_surface = img
+            except Exception as e:
+                _log(f"Failed to load modal sprite {sprite_path}: {e}")
 
-    def _render_item_detail(self, entry, top_y):
-        """Render detail panel for a selected inventory item."""
-        dr = self._drawer_rect
-        detail_rect = pygame.Rect(dr.x + 1, top_y, dr.width - 1, dr.bottom - top_y)
-        pygame.draw.rect(self.surface, (26, 26, 34), detail_rect)
-        pygame.draw.line(self.surface, COLOR_DIVIDER,
-                         (dr.x + 8, top_y), (dr.right - 8, top_y), 1)
-
-        if not isinstance(entry, dict):
+    def _render_item_modal(self):
+        """Render full-screen overlay with item image, name, and provenance."""
+        entry = self._item_modal_entry
+        if not entry or not isinstance(entry, dict):
             return
 
-        self.surface.set_clip(detail_rect.inflate(-4, -4))
+        # Dark overlay
+        overlay = pygame.Surface((INTERNAL_WIDTH, INTERNAL_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 190))
+        self.surface.blit(overlay, (0, 0))
 
-        y = top_y + 8
-        pad_x = dr.x + 12
-        avail_w = dr.width - 24
+        # Panel sizing
+        panel_w = MODAL_IMG_SIZE + MODAL_PAD * 2
+        name_h = self.font.get_height() + 8
+        prov = entry.get("provenance", "")
+        prov_lines = textwrap.wrap(prov, width=max(20, (panel_w - MODAL_PAD * 2) // self.font_small.size("M")[0]))[:3]
+        prov_h = len(prov_lines) * 18 + (8 if prov_lines else 0)
+        hint_h = self.font_tiny.get_height() + 12
+        panel_h = MODAL_PAD + MODAL_IMG_SIZE + 12 + name_h + prov_h + hint_h + MODAL_PAD
 
+        panel_x = (INTERNAL_WIDTH - panel_w) // 2
+        panel_y = (INTERNAL_HEIGHT - panel_h) // 2
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
+
+        pygame.draw.rect(self.surface, (26, 26, 34), panel_rect, border_radius=8)
+        pygame.draw.rect(self.surface, COLOR_DRAWER_BORDER, panel_rect, 1, border_radius=8)
+
+        # Image
+        img_x = panel_x + MODAL_PAD
+        img_y = panel_y + MODAL_PAD
+        if self._item_modal_surface:
+            self.surface.blit(self._item_modal_surface, (img_x, img_y))
+        else:
+            placeholder = pygame.Rect(img_x, img_y, MODAL_IMG_SIZE, MODAL_IMG_SIZE)
+            pygame.draw.rect(self.surface, COLOR_PORTRAIT_BG, placeholder, border_radius=4)
+            lbl = self.font.render("(no image)", True, COLOR_PLACEHOLDER)
+            self.surface.blit(lbl, (placeholder.centerx - lbl.get_width() // 2,
+                                    placeholder.centery - lbl.get_height() // 2))
+
+        # Name
+        text_y = img_y + MODAL_IMG_SIZE + 12
         item_name = entry.get("item", "???")
         name_surf = self.font.render(item_name, True, COLOR_ITEM_NAME)
-        self.surface.blit(name_surf, (pad_x, y))
-        y += name_surf.get_height() + 6
+        self.surface.blit(name_surf, (panel_x + MODAL_PAD, text_y))
+        text_y += name_surf.get_height() + 8
 
-        prov = entry.get("provenance", "")
-        if prov:
-            wrap_w = avail_w // self.font_tiny.size("M")[0] - 1
-            for line in textwrap.wrap(prov, width=max(20, wrap_w)):
-                line_surf = self.font_tiny.render(line, True, COLOR_PROVENANCE)
-                self.surface.blit(line_surf, (pad_x, y))
-                y += 16
+        # Provenance
+        for line in prov_lines:
+            line_surf = self.font_small.render(line, True, COLOR_PROVENANCE)
+            self.surface.blit(line_surf, (panel_x + MODAL_PAD, text_y))
+            text_y += 18
 
-        loc_name = entry.get("found_location_name", "")
-        if loc_name:
-            y += 4
-            loc_surf = self.font_tiny.render(f"Found: {loc_name}", True, COLOR_SYSTEM)
-            self.surface.blit(loc_surf, (pad_x, y))
-            y += 16
-
-        turn = entry.get("turn_acquired")
-        if turn is not None:
-            turn_surf = self.font_tiny.render(f"Turn {turn}", True, COLOR_SYSTEM)
-            self.surface.blit(turn_surf, (pad_x, y))
-
-        self.surface.set_clip(None)
+        # Dismiss hint
+        hint = self.font_tiny.render("Click anywhere or press Esc to close", True, COLOR_SYSTEM)
+        self.surface.blit(hint, (panel_rect.centerx - hint.get_width() // 2,
+                                  panel_rect.bottom - hint_h + 4))
 
     def _handle_drawer_click(self, pos):
         """Handle clicks on drawer tab and items. Returns True if consumed."""
@@ -621,10 +645,7 @@ class PlayMode:
             return True
         idx = self._drawer_scroll + rel_y // ITEM_ROW_HEIGHT
         if 0 <= idx < len(inv):
-            if self._selected_item_idx == idx:
-                self._selected_item_idx = None  # toggle off
-            else:
-                self._selected_item_idx = idx
+            self._open_item_modal(inv[idx])
         return True
 
     def _clamp_drawer_scroll(self):
@@ -819,7 +840,8 @@ class PlayMode:
         # Reset scroll and drawer
         self._scroll_offset = 0
         self._drawer_scroll = 0
-        self._selected_item_idx = None
+        self._item_modal_entry = None
+        self._item_modal_surface = None
         self._drawer_open = False
         self._recalc_layout()
         self._waiting = False
