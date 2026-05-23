@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import pygame
 
-from config import INTERNAL_WIDTH, INTERNAL_HEIGHT, DISPLAY_SCALE
+from config import INTERNAL_WIDTH, INTERNAL_HEIGHT
 from world.bible import (
     save_game, load_game, get_game_dir,
     list_games, create_game,
@@ -27,16 +27,27 @@ from modes.setup_mode import SetupMode
 from modes.play_mode import PlayMode
 
 
+def _window_transform(window):
+    win_w, win_h = window.get_size()
+    scale = min(win_w / INTERNAL_WIDTH, win_h / INTERNAL_HEIGHT)
+    offset_x = (win_w - int(INTERNAL_WIDTH * scale)) // 2
+    offset_y = (win_h - int(INTERNAL_HEIGHT * scale)) // 2
+    return scale, offset_x, offset_y
+
+
 def _flip(screen, window):
-    if DISPLAY_SCALE == 1:
-        window.blit(screen, (0, 0))
-    else:
-        pygame.transform.scale(screen, window.get_size(), window)
+    scale, ox, oy = _window_transform(window)
+    scaled_w = int(INTERNAL_WIDTH * scale)
+    scaled_h = int(INTERNAL_HEIGHT * scale)
+    scaled = pygame.transform.scale(screen, (scaled_w, scaled_h))
+    window.fill((0, 0, 0))
+    window.blit(scaled, (ox, oy))
     pygame.display.flip()
 
 
-def _scale_mouse(pos):
-    return (pos[0] // DISPLAY_SCALE, pos[1] // DISPLAY_SCALE)
+def _scale_mouse(pos, window):
+    scale, ox, oy = _window_transform(window)
+    return (int((pos[0] - ox) / scale), int((pos[1] - oy) / scale))
 
 
 def run_menu(screen, window, clock):
@@ -49,10 +60,12 @@ def run_menu(screen, window, clock):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return None, None
+            if event.type == pygame.VIDEORESIZE:
+                continue
             if event.type == pygame.MOUSEBUTTONDOWN:
-                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+                event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos, window))
             elif event.type == pygame.MOUSEMOTION:
-                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
+                event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos, window),
                                            rel=event.rel, buttons=event.buttons)
             menu.handle_event(event)
 
@@ -74,18 +87,20 @@ def run_menu(screen, window, clock):
         _flip(screen, window)
 
 
-def _collect_events(raw_events):
+def _collect_events(raw_events, window):
     """Translate raw pygame events to internal-coord events. Returns (events, quit)."""
     events = []
     for event in raw_events:
         if event.type == pygame.QUIT:
             return events, True
+        if event.type == pygame.VIDEORESIZE:
+            continue
         if event.type == pygame.MOUSEBUTTONDOWN:
-            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos, window))
         elif event.type == pygame.MOUSEBUTTONUP:
-            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos))
+            event = pygame.event.Event(event.type, button=event.button, pos=_scale_mouse(event.pos, window))
         elif event.type == pygame.MOUSEMOTION:
-            event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos),
+            event = pygame.event.Event(event.type, pos=_scale_mouse(event.pos, window),
                                        rel=event.rel, buttons=event.buttons)
         events.append(event)
     return events, False
@@ -101,7 +116,7 @@ def run_setup(screen, window, clock, game_slug, world_state, dm,
 
     while not setup.done:
         dt = clock.tick(60)
-        events, quit_requested = _collect_events(pygame.event.get())
+        events, quit_requested = _collect_events(pygame.event.get(), window)
         if quit_requested:
             return False, False
 
@@ -132,7 +147,7 @@ def run_play(screen, window, clock, game_slug, world_state, dm,
 
     while True:
         dt = clock.tick(60)
-        events, quit_requested = _collect_events(pygame.event.get())
+        events, quit_requested = _collect_events(pygame.event.get(), window)
         if quit_requested:
             return False
 
@@ -155,9 +170,7 @@ def run_play(screen, window, clock, game_slug, world_state, dm,
 
 def main():
     pygame.init()
-    display_w = INTERNAL_WIDTH * DISPLAY_SCALE
-    display_h = INTERNAL_HEIGHT * DISPLAY_SCALE
-    window = pygame.display.set_mode((display_w, display_h))
+    window = pygame.display.set_mode((INTERNAL_WIDTH, INTERNAL_HEIGHT), pygame.RESIZABLE)
     pygame.scrap.init()
     screen = pygame.Surface((INTERNAL_WIDTH, INTERNAL_HEIGHT))
     pygame.display.set_caption("The Holodeck")
