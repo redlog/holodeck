@@ -15,11 +15,25 @@ FONT_PATH = None  # Set to a .ttf path for custom pixel font
 # Gameplay
 AUTOSAVE_ON_RESPONSE = True
 
-# Gemini models — overridable via environment
-GEMINI_DM_MODEL = os.getenv("GEMINI_DM_MODEL", "gemini-2.5-pro")
-GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
-GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
-GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
-# Room backgrounds go through Imagen — it natively supports aspect ratios.
-# (Gemini's image model returns 1024x1024 squares no matter what.)
-SCENERY_MODEL = os.getenv("GEMINI_SCENERY_MODEL", "imagen-4.0-generate-001")
+# Gemini models — all must be defined in .env
+_REQUIRED_MODELS = [
+    "GEMINI_API_KEY",
+    "GEMINI_DM_MODEL",
+    "GEMINI_NPC_MODEL",
+    "GEMINI_IMAGE_MODEL",
+    "GEMINI_VISION_MODEL",
+    "GEMINI_SCENERY_MODEL",
+]
+_missing = [k for k in _REQUIRED_MODELS if not os.getenv(k)]
+if _missing:
+    import sys
+    for k in _missing:
+        print(f"Missing required environment variable: {k}", file=sys.stderr)
+    print("Define them in .env and try again.", file=sys.stderr)
+    sys.exit(1)
+
+GEMINI_DM_MODEL = os.environ["GEMINI_DM_MODEL"]
+GEMINI_NPC_MODEL = os.environ["GEMINI_NPC_MODEL"]
+GEMINI_IMAGE_MODEL = os.environ["GEMINI_IMAGE_MODEL"]
+GEMINI_VISION_MODEL = os.environ["GEMINI_VISION_MODEL"]
+SCENERY_MODEL = os.environ["GEMINI_SCENERY_MODEL"]
