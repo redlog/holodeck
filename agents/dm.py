@@ -61,11 +61,11 @@ class DungeonMaster(BaseAgent):
     PHASE_CREATING = "creating"
     PHASE_PLAY = "play"
 
-    def __init__(self, world_state):
-        super().__init__(model=GEMINI_DM_MODEL, temperature=0.9)
+    def __init__(self, world_state, game_dir=None):
+        super().__init__(model=GEMINI_DM_MODEL, temperature=0.9, game_dir=game_dir)
         self.world_state = world_state
         self._history = []
-        self._npc_agent = NPCAgent()
+        self._npc_agent = NPCAgent(game_dir=game_dir)
         self._play_cache = None
         if self._world_already_seeded():
             self.phase = self.PHASE_PLAY

@@ -12,39 +12,39 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-_TOKEN_LOG = Path(__file__).parent.parent / "games" / "token_log.csv"
-
-
 def _log(msg):
     print(f"[AGENT] {msg}", file=sys.stderr, flush=True)
 
 
-def _log_tokens(context, model, tokens_in, tokens_out, tokens_cached=0):
-    try:
-        write_header = not _TOKEN_LOG.exists()
-        with _TOKEN_LOG.open("a", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            if write_header:
-                w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_cached", "tokens_out"])
-            w.writerow([
-                datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                context or "",
-                model or "",
-                tokens_in,
-                tokens_cached,
-                tokens_out,
-            ])
-    except Exception:
-        pass
-
-
 class BaseAgent:
-    def __init__(self, model, temperature=0.9):
+    def __init__(self, model, temperature=0.9, game_dir=None):
         self._model = model
         self._temperature = temperature
+        self._game_dir = Path(game_dir) if game_dir else None
         self._result_queue = Queue()
         self._busy = False
         self._client = self._init_client()
+
+    def _log_tokens(self, context, tokens_in, tokens_out, tokens_cached=0):
+        if not self._game_dir:
+            return
+        try:
+            log_path = self._game_dir / "token_log.csv"
+            write_header = not log_path.exists()
+            with log_path.open("a", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                if write_header:
+                    w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_cached", "tokens_out"])
+                w.writerow([
+                    datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    context or "",
+                    self._model or "",
+                    tokens_in,
+                    tokens_cached,
+                    tokens_out,
+                ])
+        except Exception:
+            pass
 
     def _init_client(self):
         api_key = os.getenv("GEMINI_API_KEY")
@@ -109,8 +109,8 @@ class BaseAgent:
             config=config,
         )
         usage = response.usage_metadata
-        _log_tokens(
-            context, self._model,
+        self._log_tokens(
+            context,
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
             getattr(usage, "cached_content_token_count", 0) or 0,
@@ -132,7 +132,7 @@ class BaseAgent:
                     aspect_ratio=aspect_ratio,
                 ),
             )
-            _log_tokens(context, image_model, 0, 0)
+            self._log_tokens(context, 0, 0)
             if response.generated_images:
                 return response.generated_images[0].image.image_bytes
             return None

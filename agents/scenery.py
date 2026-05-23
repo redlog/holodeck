@@ -66,7 +66,7 @@ def _build_scenery_context(game_context):
 
 class SceneryAgent(BaseAgent):
     def __init__(self, cache_dir):
-        super().__init__(model=SCENERY_MODEL, temperature=0.7)
+        super().__init__(model=SCENERY_MODEL, temperature=0.7, game_dir=cache_dir)
         self._cache_dir = Path(cache_dir)
         self._pending = {}
 

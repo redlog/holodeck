@@ -35,8 +35,8 @@ class NPCAgent(BaseAgent):
     """Voices a single NPC for one exchange. Stateless — instantiate per call
     or reuse; all context comes from the dispatch arguments."""
 
-    def __init__(self):
-        super().__init__(model=GEMINI_NPC_MODEL, temperature=0.85)
+    def __init__(self, game_dir=None):
+        super().__init__(model=GEMINI_NPC_MODEL, temperature=0.85, game_dir=game_dir)
 
     def speak(self, npc_data, player_input, scene_context, world_state):
         """Synchronous call — returns the NPC response dict directly.

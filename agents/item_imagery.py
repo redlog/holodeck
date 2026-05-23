@@ -24,7 +24,7 @@ SPRITE_SIZE = (64, 64)
 
 class ItemImageryAgent(BaseAgent):
     def __init__(self, cache_dir):
-        super().__init__(model=GEMINI_IMAGE_MODEL, temperature=0.8)
+        super().__init__(model=GEMINI_IMAGE_MODEL, temperature=0.8, game_dir=cache_dir)
         self._cache_dir = Path(cache_dir)
         self._pending = {}
 

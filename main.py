@@ -175,7 +175,7 @@ def main():
         cache_dir = get_game_dir(game_slug)
 
         # One set of agents per game session, shared between setup and play.
-        dm = DungeonMaster(world_state)
+        dm = DungeonMaster(world_state, game_dir=cache_dir)
         portrait_agent = CharacterImageryAgent(cache_dir)
         scenery_agent = SceneryAgent(cache_dir)
         item_agent = ItemImageryAgent(cache_dir)
