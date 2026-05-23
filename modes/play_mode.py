@@ -32,6 +32,10 @@ def _log(msg):
     print(f"[PLAY] {msg}", file=sys.stderr, flush=True)
 
 
+def _portrait_file_exists(path):
+    return bool(path and os.path.isfile(path))
+
+
 # Layout constants
 INVENTORY_DRAWER_W = 240
 MAIN_AREA_W = INTERNAL_WIDTH  # full width when drawer closed
@@ -128,6 +132,8 @@ class PlayMode:
 
         # Load any existing item sprites from saved state
         self._load_existing_item_sprites()
+        # Regenerate any portraits that failed or are missing
+        self._queue_missing_portraits()
 
         self._render_opening_beat()
 
@@ -178,6 +184,19 @@ class PlayMode:
                         self._item_sprites_loaded.add(sprite_path)
                     except Exception as e:
                         _log(f"Failed to load item sprite {sprite_path}: {e}")
+
+    def _queue_missing_portraits(self):
+        """Kick off portrait generation for any character whose portrait is absent."""
+        if not self._portrait_agent:
+            return
+        ws = self.world_state
+        visual_style = ws.get("meta", {}).get("visual_style", "")
+        player = ws.get("player", {})
+        if player.get("description") and not _portrait_file_exists(player.get("portrait_path")):
+            self._portrait_agent.generate_portrait("player", player, visual_style)
+        for npc_id, npc in ws.get("npcs", {}).items():
+            if npc.get("description") and not _portrait_file_exists(npc.get("portrait_path")):
+                self._portrait_agent.generate_portrait(npc_id, npc, visual_style)
 
     # ------------------------------------------------------------------ #
     # Main loop hooks
