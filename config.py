@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
 
 # Display
 INTERNAL_WIDTH = 1280
@@ -14,10 +17,9 @@ AUTOSAVE_ON_RESPONSE = True
 
 # Gemini models — overridable via environment
 GEMINI_DM_MODEL = os.getenv("GEMINI_DM_MODEL", "gemini-2.5-pro")
-GEMINI_AUTHOR_MODEL = os.getenv("GEMINI_AUTHOR_MODEL", "gemini-2.5-pro")
 GEMINI_NPC_MODEL = os.getenv("GEMINI_NPC_MODEL", "gemini-2.5-flash")
 GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
 # Room backgrounds go through Imagen — it natively supports aspect ratios.
 # (Gemini's image model returns 1024x1024 squares no matter what.)
-SCENERY_MODEL = os.getenv("SCENERY_MODEL", "imagen-4.0-generate-001")
+SCENERY_MODEL = os.getenv("GEMINI_SCENERY_MODEL", "imagen-4.0-generate-001")

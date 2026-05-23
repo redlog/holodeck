@@ -8,9 +8,6 @@ from queue import Queue, Empty
 
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-
-load_dotenv(override=True)
 
 def _log(msg):
     print(f"[AGENT] {msg}", file=sys.stderr, flush=True)
