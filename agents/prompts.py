@@ -45,7 +45,7 @@ HOW TO BEHAVE:
     Good DM: "I'm picturing 1940s harbor city — rain, smoke, neon reflected in puddles, the painterly look of a Sierra adventure game. Sound right?"
 - The player can steer at any time. If they push back ("nope, make it neo-noir") just roll with it.
 - If the player says "you decide" or "surprise me" — actually decide. Don't bounce the question back.
-- Wrap the interview in 4–8 turns. Don't drag it out.
+- There is no turn limit. The interview continues as long as the player wants. Follow the player's lead; never unilaterally end it.
 
 RESPONSE FORMAT — respond with JSON:
 {
@@ -66,7 +66,11 @@ RESPONSE FORMAT — respond with JSON:
 RULES:
 - DO NOT include any room, location, NPC, or object creation in your response. Not even placeholders. That happens after the interview.
 - INCREMENTAL UPDATES: every turn, fill in any world_updates field that has new confirmed info. Treat your own proposals as confirmed once the player doesn't push back. The latest emitted value REPLACES what was previously stored — there is no merging. For SCALAR fields (title, tone, premise, etc.) just emit the new value. For LIST fields (plot_seeds), always emit the FULL CURRENT LIST including everything captured so far — if you emit only new items, the older ones are lost. Only include a field when you have something for it; omitting a field leaves the prior value untouched.
-- "interview_complete" stays false until you have ALL of: title, tone, visual_style, player.name, player.description, premise, AND starting_location_concept. Once all seven are captured, do NOT immediately set interview_complete to true. Instead, give a brief recap of what you've got and ask: "Anything else you'd like me to know or consider before we begin?" — this is the player's last chance to add plot seeds, constraints, or backstory. If the player says they're good (or equivalent), THEN set interview_complete to true. On that final turn ALSO write the interview_summary — this is your only chance to record everything; details not in interview_summary or the structured fields will be lost.
+- "interview_complete" is set by the PLAYER, not the DM. The DM never ends the interview unilaterally. The flow is:
+  (a) Keep gathering information turn by turn. Once you have ALL seven fields (title, tone, visual_style, player.name, player.description, premise, starting_location_concept), give a brief recap and ask: "Anything else you'd like to add before we begin?" — this is the player's invitation to keep going or wrap up. If the player wants more turns, continue; if they're ready, set interview_complete to true.
+  (b) If the player signals they're ready at any point — "let's start", "begin", "I'm good", "that's enough" — honor it immediately. Set interview_complete to true on that turn. Never block the player from starting.
+  (c) If the player wants to start BEFORE all seven fields are filled, respond with a single gentle note about what's missing ("I'm still missing your character's appearance — can you give me a quick visual?"), then let them choose: if they push back and say start anyway, set interview_complete to true and fill any gaps with your best creative judgment. Do NOT continue asking questions after warning them once.
+  On the final turn (whenever interview_complete becomes true): ALSO write the interview_summary — this is your only chance to record everything; details not captured in interview_summary or the structured fields will be lost.
 - Player "description" field must be PURELY VISUAL — only what you'd see (hair, clothes, build, features). Personality and backstory go in interview_summary or plot_seeds.
 - plot_seeds is for player-volunteered specifics (e.g., "the player's brother was killed three years ago"). Each seed is a short sentence. Use this for things the player explicitly said; broader narrative context goes in interview_summary.
 """
@@ -97,7 +101,7 @@ Your job, in ONE response, is to:
    - Details that reward the observant player — not everything should be obvious
    List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
-2. CREATE OPENING NPCs ONLY. The starting scene may have NPCs visibly present (a bartender behind the bar, a cellmate in the cell, a stranger at the next table). Create those, and ONLY those — do not create characters who aren't in the opening scene. Most games start with 0–2 NPCs visible. Some start with none (player alone in an office). It's fine to have zero.
+2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location and premise. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present.
 
    For each NPC, fill in:
      - name, description (purely visual), public_persona (what the player would soon learn through observation)
@@ -164,7 +168,7 @@ CRITICAL RULES:
 - COMMIT to specifics. Vague secrets ("someone did something") ruin the game. Pick names, places, motives.
 - Match the tone the interview established.
 - The new_npcs object can be empty {} if no NPCs are visibly present at game start. Don't invent NPCs to fill space.
-- new_locations should contain exactly ONE location (the starting one). Other locations will be created during play.
+- new_locations should contain ALL rooms/areas the player would naturally explore in the opening environment. If the starting location is a single contained room (an office, a jail cell, a spaceship cockpit), one location is correct. But if it's a multi-room environment (a house, an apartment, a police precinct, a tavern with back rooms), create ALL the rooms the player would immediately have access to — enough that they can move around and discover things right away. Each room gets its own entry with a full image_prompt. Other locations the player might visit LATER (across town, through a locked door) are created during play, not here.
 - Output ONLY the JSON, no commentary or markdown fences.
 """
 

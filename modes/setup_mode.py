@@ -317,7 +317,7 @@ class SetupMode:
             thread_count = response.get("thread_count", 0)
             self._add_lines(
                 "system",
-                f"World ready — {loc_count} location, {npc_count} NPC(s), "
+                f"World ready — {loc_count} location(s), {npc_count} NPC(s), "
                 f"{secret_count} secrets, {thread_count} plot threads."
             )
             self._autosave()
@@ -342,41 +342,42 @@ class SetupMode:
                 )
                 self._add_lines("system", "Painting your portrait...")
 
-        # Starting room background
+        # Paint all starting rooms (creation may have seeded multiple locations)
         if self._scenery_agent:
-            loc_id = self.world_state.get("current_location_id")
-            if loc_id:
-                loc = self.world_state.get("locations", {}).get(loc_id, {})
-                if loc and not loc.get("image_path"):
-                    ws = self.world_state
-                    npcs = ws.get("npcs", {})
-                    present = [
-                        npcs[nid] for nid in loc.get("present_npc_ids", [])
-                        if nid in npcs
-                    ]
-                    # Include secrets relevant to the starting location
-                    visual_clues = []
-                    bible = ws.get("dm_bible", {})
-                    for secret in bible.get("secrets", []):
-                        fact = secret.get("fact", "").lower()
-                        loc_name = loc.get("name", "").lower()
-                        if loc_name and loc_name in fact:
-                            visual_clues.append(secret["fact"])
-                    for beat in bible.get("planned_beats", []):
-                        loc_name = loc.get("name", "").lower()
-                        if loc_name and loc_name in beat.lower():
-                            visual_clues.append(beat)
-                    game_ctx = {
-                        "tone": ws.get("meta", {}).get("tone", ""),
-                        "present_npcs": present,
-                        "visual_clues": visual_clues,
-                        "discovered_features": loc.get("discovered_features", []),
-                        "events_log": loc.get("events_log_summary", ""),
-                    }
-                    self._scenery_agent.generate_room(loc_id, loc, visual_style,
-                                                      game_context=game_ctx)
-                    self._add_lines("system",
-                                    f"Painting {loc.get('name', loc_id)}...")
+            ws = self.world_state
+            npcs = ws.get("npcs", {})
+            bible = ws.get("dm_bible", {})
+            # Prioritise the current (starting) location first
+            starting_id = ws.get("current_location_id")
+            all_loc_ids = list(ws.get("locations", {}).keys())
+            ordered = ([starting_id] if starting_id in all_loc_ids else []) + \
+                      [lid for lid in all_loc_ids if lid != starting_id]
+            for loc_id in ordered:
+                loc = ws.get("locations", {}).get(loc_id, {})
+                if not loc or loc.get("image_path"):
+                    continue
+                present = [
+                    npcs[nid] for nid in loc.get("present_npc_ids", [])
+                    if nid in npcs
+                ]
+                visual_clues = []
+                loc_name = loc.get("name", "").lower()
+                for secret in bible.get("secrets", []):
+                    if loc_name and loc_name in secret.get("fact", "").lower():
+                        visual_clues.append(secret["fact"])
+                for beat in bible.get("planned_beats", []):
+                    if loc_name and loc_name in beat.lower():
+                        visual_clues.append(beat)
+                game_ctx = {
+                    "tone": ws.get("meta", {}).get("tone", ""),
+                    "present_npcs": present,
+                    "visual_clues": visual_clues,
+                    "discovered_features": loc.get("discovered_features", []),
+                    "events_log": loc.get("events_log_summary", ""),
+                }
+                self._scenery_agent.generate_room(loc_id, loc, visual_style,
+                                                  game_context=game_ctx)
+                self._add_lines("system", f"Painting {loc.get('name', loc_id)}...")
 
     def _autosave(self):
         from world.bible import save_game
