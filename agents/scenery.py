@@ -96,10 +96,18 @@ class SceneryAgent(BaseAgent):
 
             if existing_bytes:
                 _log(f"[{location_id}] applying delta to existing image: {change}")
+                scene = (location_def.get("image_prompt")
+                         or location_def.get("summary")
+                         or location_def.get("name", "an empty room"))
                 prompt = (
-                    f"This is an existing scene. Apply exactly this change and nothing else: {change}. "
-                    f"Keep the composition, lighting, art style, camera angle, and all other details "
-                    f"completely identical to the reference image."
+                    f"Regenerate this scene with one small update. "
+                    f"The scene is: {scene}. "
+                    f"Visual style: {visual_style or 'painterly adventure-game art'}. "
+                    f"Only change: {change}. "
+                    f"Everything else — the full wide-angle composition, camera distance, "
+                    f"lighting, colour palette, art style, and all other room details — "
+                    f"must remain identical to the reference image. "
+                    f"Do not zoom in. Show the complete room."
                 )
                 image_bytes = self._call_image(prompt, reference_images=[existing_bytes], aspect_ratio="16:9", context=f"room:{location_id}")
             else:
