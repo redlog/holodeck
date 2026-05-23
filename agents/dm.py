@@ -25,6 +25,7 @@ of iteration; preserve their constraint structure when expanding.
 import json
 import re
 import sys
+import traceback
 
 from google.genai import types
 
@@ -406,7 +407,7 @@ class DungeonMaster(BaseAgent):
                 "speaker": "dm",
             })
         except Exception as e:
-            _log(f"Play turn error: {e}")
+            _log(f"Play turn error: {e}\n{traceback.format_exc()}")
             self._result_queue.put({
                 "narration": f"[DM error: {str(e)[:200]}]",
                 "speaker": "dm",
@@ -795,6 +796,10 @@ class DungeonMaster(BaseAgent):
 
         # Image dirty flags
         for lid in changes.get("image_dirty") or []:
+            if isinstance(lid, dict):
+                lid = lid.get("id") or lid.get("location_id") or lid.get("location")
+            if not isinstance(lid, str):
+                continue
             loc = ws.get("locations", {}).get(lid)
             if loc:
                 loc["image_dirty"] = True
