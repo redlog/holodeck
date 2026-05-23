@@ -26,6 +26,8 @@ import json
 import re
 import sys
 
+from google.genai import types
+
 from agents.base import BaseAgent
 from agents.npc import NPCAgent
 from agents.prompts import (
@@ -64,6 +66,7 @@ class DungeonMaster(BaseAgent):
         self.world_state = world_state
         self._history = []
         self._npc_agent = NPCAgent()
+        self._play_cache = None
         if self._world_already_seeded():
             self.phase = self.PHASE_PLAY
         elif self._setup_already_complete():
@@ -326,6 +329,25 @@ class DungeonMaster(BaseAgent):
     RECENT_HISTORY = 6     # last N exchanges get full context
     MAX_PLAY_HISTORY = 20  # total exchanges kept (older ones are trimmed)
 
+    def _ensure_play_cache(self):
+        """Lazily create (or return) a cached version of PLAY_SYSTEM."""
+        if self._play_cache is not None:
+            return self._play_cache
+        try:
+            cache = self._client.caches.create(
+                model=self._model,
+                config=types.CreateCachedContentConfig(
+                    system_instruction=PLAY_SYSTEM,
+                    ttl="14400s",  # 4 hours
+                ),
+            )
+            self._play_cache = cache
+            _log(f"PLAY_SYSTEM cached: {cache.name}")
+        except Exception as e:
+            _log(f"Cache creation failed, running uncached: {e}")
+            self._play_cache = None
+        return self._play_cache
+
     def narrate_opening(self):
         """Fire a DM turn that narrates the opening scene (no player input)."""
         if self.phase != self.PHASE_PLAY:
@@ -351,7 +373,9 @@ class DungeonMaster(BaseAgent):
 
             loc_id = self.world_state.get("current_location_id", "")
             loc_name = self.world_state.get("locations", {}).get(loc_id, {}).get("name", loc_id) or "unknown"
-            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=loc_name)
+            cache = self._ensure_play_cache()
+            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=loc_name,
+                                  cached_content=cache.name if cache else None)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
             )
@@ -464,7 +488,9 @@ class DungeonMaster(BaseAgent):
         )
 
         try:
-            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=npc_name)
+            cache = self._ensure_play_cache()
+            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=npc_name,
+                                  cached_content=cache.name if cache else None)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
             )

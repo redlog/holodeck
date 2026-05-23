@@ -87,16 +87,25 @@ class BaseAgent:
             types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
         ]
 
-    def _call_text(self, system_prompt, contents, response_mime="application/json", context=""):
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=contents,
-            config=types.GenerateContentConfig(
+    def _call_text(self, system_prompt, contents, response_mime="application/json", context="", cached_content=None):
+        if cached_content:
+            config = types.GenerateContentConfig(
+                cached_content=cached_content,
+                temperature=self._temperature,
+                response_mime_type=response_mime,
+                safety_settings=self._safety_off(),
+            )
+        else:
+            config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=self._temperature,
                 response_mime_type=response_mime,
                 safety_settings=self._safety_off(),
-            ),
+            )
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=config,
         )
         usage = response.usage_metadata
         _log_tokens(
