@@ -885,8 +885,11 @@ class PlayMode:
             self._trigger_room_render(new_loc["id"])
 
         # Existing locations marked dirty
-        for lid in changes.get("image_dirty") or []:
-            self._trigger_room_render(lid)
+        for entry in changes.get("image_dirty") or []:
+            if isinstance(entry, dict):
+                self._trigger_room_render(entry["id"], change=entry.get("change"))
+            else:
+                self._trigger_room_render(entry)
 
         # Location change — if moved to a location whose image hasn't loaded
         new_loc_id = changes.get("current_location_id")
@@ -908,7 +911,7 @@ class PlayMode:
                     self._trigger_item_sprite(entry)
                     break
 
-    def _trigger_room_render(self, loc_id):
+    def _trigger_room_render(self, loc_id, change=None):
         if not self._scenery_agent:
             return
         loc = self.world_state.get("locations", {}).get(loc_id)
@@ -917,7 +920,7 @@ class PlayMode:
         meta = self.world_state.get("meta", {})
         style = meta.get("visual_style", "")
         ctx = self._build_scenery_context(loc_id, loc)
-        self._scenery_agent.generate_room(loc_id, loc, style, game_context=ctx)
+        self._scenery_agent.generate_room(loc_id, loc, style, game_context=ctx, change=change)
         _log(f"Triggered room render for: {loc_id}")
 
     def _trigger_item_sprite(self, item_entry):

@@ -222,7 +222,7 @@ RESPONSE FORMAT — respond with JSON:
     "current_location_id": null,
     "create_location": null,
     "advance_clock": null,
-    "image_dirty": [],
+    "image_dirty": [],  // each entry: {"id": "location_id", "change": "what visually changed"}
     "inventory_add": [],
     "inventory_remove": [],
     "discovered_features_add": [],
@@ -249,7 +249,9 @@ STATE CHANGES — field details:
     * Details consistent with the game's tone and visual style
   Everything you put in the image_prompt will be painted and shown to the player. Everything you leave out will be invisible. Be generous with detail — the player will scrutinize every inch of the scene.
 
-- "image_dirty": list of location ids whose appearance has changed enough to warrant a new image (e.g., a fire breaks out, lights turn on/off, major destruction). Usually empty.
+- "image_dirty": list of objects describing locations whose appearance has changed enough to warrant a new image. Usually empty. Each entry:
+  {"id": "location_id", "change": "one sentence describing exactly what visually changed"}
+  The "change" field must describe only the delta — what is different now versus before (e.g., "the pen has been removed from the desk", "the lights have been turned off, the room is now dark", "a broken vase lies shattered on the floor"). The image generator will keep everything else identical and apply only this change. Be specific and visual.
 
 - "inventory_add": list of objects when the player picks something up. Each entry:
   {"item": "brass key", "provenance": "Found in the top drawer of Marta's desk while she was in the kitchen.", "visual_description": "A small tarnished brass key with an ornate bow, dark patina on the teeth."}

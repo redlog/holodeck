@@ -75,30 +75,45 @@ class SceneryAgent(BaseAgent):
         return bool(self._pending)
 
     def generate_room(self, location_id, location_def, visual_style,
-                      game_context=None):
+                      game_context=None, change=None):
         if location_id in self._pending:
             return
         self._pending[location_id] = True
         _log(f"Starting room paint for '{location_id}'")
         self._run_threaded(self._pipeline, location_id, location_def,
-                           visual_style, game_context)
+                           visual_style, game_context, change)
 
     def _pipeline(self, location_id, location_def, visual_style,
-                  game_context=None):
+                  game_context=None, change=None):
         try:
-            scene = (location_def.get("image_prompt")
-                     or location_def.get("summary")
-                     or location_def.get("name", "an empty room"))
+            existing_path = location_def.get("image_path")
+            existing_bytes = None
+            if change and existing_path:
+                try:
+                    existing_bytes = Path(existing_path).read_bytes()
+                except OSError:
+                    pass
 
-            context = _build_scenery_context(game_context)
-
-            _log(f"[{location_id}] painting scene...")
-            prompt = SCENERY_TEMPLATE.format(
-                visual_style=visual_style or "painterly adventure-game art",
-                scene=scene,
-                context=context,
-            )
-            image_bytes = self._call_image(prompt, aspect_ratio="16:9")
+            if existing_bytes:
+                _log(f"[{location_id}] applying delta to existing image: {change}")
+                prompt = (
+                    f"This is an existing scene. Apply exactly this change and nothing else: {change}. "
+                    f"Keep the composition, lighting, art style, camera angle, and all other details "
+                    f"completely identical to the reference image."
+                )
+                image_bytes = self._call_image(prompt, reference_images=[existing_bytes], aspect_ratio="16:9")
+            else:
+                scene = (location_def.get("image_prompt")
+                         or location_def.get("summary")
+                         or location_def.get("name", "an empty room"))
+                context = _build_scenery_context(game_context)
+                _log(f"[{location_id}] painting scene from scratch...")
+                prompt = SCENERY_TEMPLATE.format(
+                    visual_style=visual_style or "painterly adventure-game art",
+                    scene=scene,
+                    context=context,
+                )
+                image_bytes = self._call_image(prompt, aspect_ratio="16:9")
             if not image_bytes:
                 self._result_queue.put(("error", location_id, "Image model returned nothing"))
                 return
