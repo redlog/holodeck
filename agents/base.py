@@ -19,18 +19,19 @@ def _log(msg):
     print(f"[AGENT] {msg}", file=sys.stderr, flush=True)
 
 
-def _log_tokens(context, model, tokens_in, tokens_out):
+def _log_tokens(context, model, tokens_in, tokens_out, tokens_cached=0):
     try:
         write_header = not _TOKEN_LOG.exists()
         with _TOKEN_LOG.open("a", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             if write_header:
-                w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_out"])
+                w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_cached", "tokens_out"])
             w.writerow([
                 datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                 context or "",
                 model or "",
                 tokens_in,
+                tokens_cached,
                 tokens_out,
             ])
     except Exception:
@@ -112,6 +113,7 @@ class BaseAgent:
             context, self._model,
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
+            getattr(usage, "cached_content_token_count", 0) or 0,
         )
         return response.text
 
@@ -154,6 +156,7 @@ class BaseAgent:
             context, image_model,
             getattr(usage, "prompt_token_count", 0) or 0,
             getattr(usage, "candidates_token_count", 0) or 0,
+            getattr(usage, "cached_content_token_count", 0) or 0,
         )
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):
