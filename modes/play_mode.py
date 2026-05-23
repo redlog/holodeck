@@ -137,7 +137,8 @@ class PlayMode:
 
         # Load any existing item sprites from saved state
         self._load_existing_item_sprites()
-        # Regenerate any item sprites or portraits that failed or are missing
+        # Regenerate any images that failed or were deleted
+        self._queue_missing_room_images()
         self._queue_missing_item_sprites()
         self._queue_missing_portraits()
 
@@ -190,6 +191,17 @@ class PlayMode:
                         self._item_sprites_loaded.add(sprite_path)
                     except Exception as e:
                         _log(f"Failed to load item sprite {sprite_path}: {e}")
+
+    def _queue_missing_room_images(self):
+        """Re-queue room renders for any location whose image file is absent."""
+        if not self._scenery_agent:
+            return
+        for loc_id, loc in self.world_state.get("locations", {}).items():
+            if not _portrait_file_exists(loc.get("image_path")):
+                _log(f"Missing room image for '{loc_id}', re-queuing render")
+                loc["image_dirty"] = True
+                loc["image_path"] = None
+                self._trigger_room_render(loc_id)
 
     def _queue_missing_item_sprites(self):
         """Re-queue sprite generation for inventory items whose file is missing."""
