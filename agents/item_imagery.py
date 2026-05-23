@@ -49,7 +49,7 @@ class ItemImageryAgent(BaseAgent):
                 or item_entry.get("item", "a mysterious object")
             )
             _log(f"[{item_id}] painting sprite...")
-            sprite_bytes = self._generate_sprite(description, visual_style)
+            sprite_bytes = self._generate_sprite(description, visual_style, item_id)
             if not sprite_bytes:
                 self._result_queue.put(("error", item_id, "Failed to generate sprite"))
                 return
@@ -66,12 +66,12 @@ class ItemImageryAgent(BaseAgent):
         finally:
             self._pending.pop(item_id, None)
 
-    def _generate_sprite(self, description, visual_style):
+    def _generate_sprite(self, description, visual_style, item_id=""):
         prompt = ITEM_SPRITE_TEMPLATE.format(
             visual_style=visual_style or "painterly adventure-game art",
             description=description,
         )
-        return self._call_image(prompt, aspect_ratio="1:1")
+        return self._call_image(prompt, aspect_ratio="1:1", context=f"item:{item_id}")
 
     def _save_sprite(self, item_id, image_bytes):
         path = self._cache_dir / "items" / f"{item_id}.png"

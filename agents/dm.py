@@ -113,7 +113,7 @@ class DungeonMaster(BaseAgent):
         try:
             opening_user_msg = INTERVIEW_OPENING_DIRECTIVE
             self._history.append({"role": "user", "parts": [{"text": opening_user_msg}]})
-            raw = self._call_text(INTERVIEW_SYSTEM, self._history)
+            raw = self._call_text(INTERVIEW_SYSTEM, self._history, context="interview")
             self._history.append({"role": "model", "parts": [{"text": raw}]})
             parsed = json.loads(_strip_json_fences(raw))
             self._scrub_interview_response(parsed)
@@ -152,7 +152,7 @@ class DungeonMaster(BaseAgent):
             original_temp = self._temperature
             self._temperature = 0.5  # interview wants discipline, not creativity
             try:
-                raw = self._call_text(INTERVIEW_SYSTEM, self._history)
+                raw = self._call_text(INTERVIEW_SYSTEM, self._history, context="interview")
             finally:
                 self._temperature = original_temp
 
@@ -246,7 +246,7 @@ class DungeonMaster(BaseAgent):
 
             raw = self._call_text(CREATION_SYSTEM, [
                 {"role": "user", "parts": [{"text": user_msg}]}
-            ])
+            ], context="author")
             parsed = json.loads(_strip_json_fences(raw))
             self._apply_creation(parsed)
             self.phase = self.PHASE_PLAY
@@ -349,7 +349,9 @@ class DungeonMaster(BaseAgent):
             )
             self._trim_history()
 
-            raw = self._call_text(PLAY_SYSTEM, self._play_history)
+            loc_id = self.world_state.get("current_location_id", "")
+            loc_name = self.world_state.get("locations", {}).get(loc_id, {}).get("name", loc_id) or "unknown"
+            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=loc_name)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
             )
@@ -462,7 +464,7 @@ class DungeonMaster(BaseAgent):
         )
 
         try:
-            raw = self._call_text(PLAY_SYSTEM, self._play_history)
+            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=npc_name)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
             )

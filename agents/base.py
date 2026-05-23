@@ -1,6 +1,9 @@
+import csv
 import os
 import sys
 import threading
+from datetime import datetime
+from pathlib import Path
 from queue import Queue, Empty
 
 from google import genai
@@ -9,9 +12,29 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+_TOKEN_LOG = Path(__file__).parent.parent / "games" / "token_log.csv"
+
 
 def _log(msg):
     print(f"[AGENT] {msg}", file=sys.stderr, flush=True)
+
+
+def _log_tokens(context, model, tokens_in, tokens_out):
+    try:
+        write_header = not _TOKEN_LOG.exists()
+        with _TOKEN_LOG.open("a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow(["timestamp", "context", "model", "tokens_in", "tokens_out"])
+            w.writerow([
+                datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                context or "",
+                model or "",
+                tokens_in,
+                tokens_out,
+            ])
+    except Exception:
+        pass
 
 
 class BaseAgent:
@@ -64,7 +87,7 @@ class BaseAgent:
             types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
         ]
 
-    def _call_text(self, system_prompt, contents, response_mime="application/json"):
+    def _call_text(self, system_prompt, contents, response_mime="application/json", context=""):
         response = self._client.models.generate_content(
             model=self._model,
             contents=contents,
@@ -75,9 +98,15 @@ class BaseAgent:
                 safety_settings=self._safety_off(),
             ),
         )
+        usage = response.usage_metadata
+        _log_tokens(
+            context, self._model,
+            getattr(usage, "prompt_token_count", 0) or 0,
+            getattr(usage, "candidates_token_count", 0) or 0,
+        )
         return response.text
 
-    def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9"):
+    def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9", context=""):
         # The agent's self._model dictates which API path we take — no
         # silent fallbacks. Imagen models use the Imagen image API (which
         # honors aspect_ratio); Gemini image models use generate_content.
@@ -92,6 +121,7 @@ class BaseAgent:
                     aspect_ratio=aspect_ratio,
                 ),
             )
+            _log_tokens(context, image_model, 0, 0)
             if response.generated_images:
                 return response.generated_images[0].image.image_bytes
             return None
@@ -109,6 +139,12 @@ class BaseAgent:
                 response_modalities=["image", "text"],
                 safety_settings=self._safety_off(),
             ),
+        )
+        usage = response.usage_metadata
+        _log_tokens(
+            context, image_model,
+            getattr(usage, "prompt_token_count", 0) or 0,
+            getattr(usage, "candidates_token_count", 0) or 0,
         )
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.mime_type.startswith("image/"):

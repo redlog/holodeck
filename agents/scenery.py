@@ -101,19 +101,19 @@ class SceneryAgent(BaseAgent):
                     f"Keep the composition, lighting, art style, camera angle, and all other details "
                     f"completely identical to the reference image."
                 )
-                image_bytes = self._call_image(prompt, reference_images=[existing_bytes], aspect_ratio="16:9")
+                image_bytes = self._call_image(prompt, reference_images=[existing_bytes], aspect_ratio="16:9", context=f"room:{location_id}")
             else:
                 scene = (location_def.get("image_prompt")
                          or location_def.get("summary")
                          or location_def.get("name", "an empty room"))
-                context = _build_scenery_context(game_context)
+                scenery_ctx = _build_scenery_context(game_context)
                 _log(f"[{location_id}] painting scene from scratch...")
                 prompt = SCENERY_TEMPLATE.format(
                     visual_style=visual_style or "painterly adventure-game art",
                     scene=scene,
-                    context=context,
+                    context=scenery_ctx,
                 )
-                image_bytes = self._call_image(prompt, aspect_ratio="16:9")
+                image_bytes = self._call_image(prompt, aspect_ratio="16:9", context=f"room:{location_id}")
             if not image_bytes:
                 self._result_queue.put(("error", location_id, "Image model returned nothing"))
                 return

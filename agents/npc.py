@@ -62,7 +62,7 @@ class NPCAgent(BaseAgent):
         contents = [{"role": "user", "parts": [{"text": user_msg}]}]
 
         try:
-            raw = self._call_text(system_prompt, contents)
+            raw = self._call_text(system_prompt, contents, context=npc_name)
             parsed = json.loads(_strip_json_fences(raw))
             parsed.setdefault("speech", "...")
             parsed.setdefault("tells", [])
