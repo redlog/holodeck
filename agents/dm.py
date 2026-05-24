@@ -33,7 +33,7 @@ from agents.base import BaseAgent
 from agents.npc import NPCAgent
 from agents.prompts import (
     INTERVIEW_SYSTEM, INTERVIEW_OPENING_DIRECTIVE,
-    CREATION_SYSTEM, PLAY_SYSTEM, OPENING_SCENE_DIRECTIVE,
+    CREATION_SYSTEM, PLAY_SYSTEM, OPENING_SCENE_DIRECTIVE, RESUMED_SCENE_DIRECTIVE,
     DM_NPC_DISPATCH,
 )
 from config import GEMINI_DM_MODEL
@@ -778,7 +778,8 @@ class DungeonMaster(BaseAgent):
 
         # The player's input (or opening-scene directive)
         if user_text is None:
-            sections.append(OPENING_SCENE_DIRECTIVE)
+            has_history = bool(getattr(self, "_play_history", []))
+            sections.append(RESUMED_SCENE_DIRECTIVE if has_history else OPENING_SCENE_DIRECTIVE)
         else:
             sections.append(f"PLAYER INPUT: {user_text}")
 

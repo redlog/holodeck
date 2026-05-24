@@ -343,7 +343,19 @@ OPENING_SCENE_DIRECTIVE = (
     "PLAYER INPUT: [This is the very first turn. The player has just arrived. "
     "Narrate the opening scene — describe where they are, what they see, "
     "the atmosphere, any NPCs present. Set the mood and hook them into the story. "
-    "Do NOT ask the player a question; just paint the scene.]"
+    "Do NOT ask the player a question; just paint the scene. "
+    "Do NOT emit image_dirty entries — scene images are already being generated. "
+    "Do NOT advance the clock.]"
+)
+
+RESUMED_SCENE_DIRECTIVE = (
+    "PLAYER INPUT: [The player is resuming where they left off. "
+    "Narrate a brief re-entry: remind them where they are and what they were doing. "
+    "Keep it short — 2-3 sentences. "
+    "Do NOT ask the player a question. "
+    "Do NOT advance the clock. "
+    "Do NOT emit image_dirty entries — the scene has not changed. "
+    "Do NOT create NPCs that are not already in the world state.]"
 )
 
 
