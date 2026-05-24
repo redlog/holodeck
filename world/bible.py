@@ -259,9 +259,12 @@ def get_game_dir(game_slug):
     return d
 
 
-def create_game(title):
-    slug = slugify(title)
-    base = slug
+def create_game():
+    # Use a timestamp-based slug so directory names are unique and stable.
+    # The in-game title is set by the DM during the interview and written
+    # to meta.title — the game list displays that, not the directory name.
+    base = datetime.now().strftime("game-%Y%m%d-%H%M%S")
+    slug = base
     counter = 2
     while _game_dir(slug).exists():
         slug = f"{base}-{counter}"
@@ -275,7 +278,6 @@ def create_game(title):
     (game_dir / "saves").mkdir(exist_ok=True)
 
     ws = new_game()
-    ws["meta"]["title"] = title
     save_game(ws, slug, "autosave")
     return slug, ws
 

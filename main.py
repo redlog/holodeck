@@ -74,7 +74,7 @@ def run_menu(screen, window, clock):
             if action == "quit":
                 return None, None
             if action == "new":
-                slug, world_state = create_game(value)
+                slug, world_state = create_game()
                 return slug, world_state
             if action == "load":
                 result = load_game(value)
