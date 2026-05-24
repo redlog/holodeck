@@ -323,6 +323,31 @@ class DungeonMaster(BaseAgent):
         if threads:
             ws["plot_threads"] = threads
 
+        # Starting inventory
+        player = ws.setdefault("player", {})
+        inv = player.setdefault("inventory", [])
+        for item_entry in parsed.get("starting_inventory") or []:
+            if not isinstance(item_entry, dict):
+                item_entry = {"item": str(item_entry)}
+            item_name = item_entry.get("item", "???")
+            item_id = re.sub(r"[^a-z0-9]+", "_", item_name.lower()).strip("_")
+            existing_ids = {e.get("item_id") for e in inv if isinstance(e, dict)}
+            base_id, counter = item_id, 2
+            while item_id in existing_ids:
+                item_id = f"{base_id}_{counter}"
+                counter += 1
+            inv.append({
+                "item": item_name,
+                "item_id": item_id,
+                "provenance": item_entry.get("provenance", ""),
+                "found_location_id": "",
+                "found_location_name": "",
+                "turn_acquired": 0,
+                "sprite_path": None,
+                "visual_description": item_entry.get("visual_description", ""),
+            })
+            _log(f"Starting inventory: {item_name} (id={item_id})")
+
     # ------------------------------------------------------------------ #
     # Play phase
     # ------------------------------------------------------------------ #

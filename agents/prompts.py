@@ -122,7 +122,9 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
 
 4. SEED PLOT THREADS. Convert the interview's plot_seeds into structured plot_threads. Each thread has an id, summary, status ("active" or "background"), and known_to_player. The player-volunteered seeds (e.g., "Vesper's brother was killed three years ago") become known_to_player=true threads. You may add 1–2 additional hidden threads of your own (known_to_player=false) tied to your bible secrets — these are the threads the player will discover.
 
-5. SET THE NARRATIVE CLOCK. Pick a concrete in-fiction date and time of day for the opening scene. This anchors the world — NPCs have schedules, shops open and close, light changes. Format: a short natural-language string like "1888-10-14, late evening" or "Day 1, morning" or "Tuesday, 3:47 AM". Match the genre (a noir gets "Tuesday night, 11 PM"; a fantasy gets "the third day of the Harvest Moon, dusk"). Confirm that your image_prompts and NPC intents all make sense at this time — if not, revise them.
+5. POPULATE STARTING INVENTORY. Based on the player's character, profession, and the premise, give them the items they would realistically have on their person at game start — the things they own and routinely carry, not things they've found in-game. A detective carries their badge, wallet, and sidearm. A doctor carries a stethoscope and prescription pad. A sailor might have a knife and compass. Use judgment: 1–4 items only — the things they'd actually have in their pockets or on their person right now, not every item they own. Each item needs a provenance (a short narrative sentence describing why they have it — make it characterful, not just "you own this") and a visual_description (what it looks like, for sprite generation). If the character has no items that make sense to carry (e.g., a prisoner, a ghost, a child), starting_inventory can be [].
+
+6. SET THE NARRATIVE CLOCK. Pick a concrete in-fiction date and time of day for the opening scene. This anchors the world — NPCs have schedules, shops open and close, light changes. Format: a short natural-language string like "1888-10-14, late evening" or "Day 1, morning" or "Tuesday, 3:47 AM". Match the genre (a noir gets "Tuesday night, 11 PM"; a fantasy gets "the third day of the Harvest Moon, dusk"). Confirm that your image_prompts and NPC intents all make sense at this time — if not, revise them.
 
 RESPOND WITH JSON IN THIS EXACT SHAPE:
 
@@ -163,6 +165,9 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
   },
   "plot_threads": [
     {"id": "brother_murder", "summary": "...", "status": "active", "known_to_player": true}
+  ],
+  "starting_inventory": [
+    {"item": "service revolver", "provenance": "Your department-issued .38 Special, carried on duty since the academy. Worn in a shoulder holster under your jacket.", "visual_description": "A blued-steel .38 Special revolver with a 4-inch barrel, worn wooden grips, and a department serial number stamped on the frame."}
   ]
 }
 
