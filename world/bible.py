@@ -130,6 +130,10 @@ def _game_file(game_slug):
     return _game_dir(game_slug) / "game.json"
 
 
+def _game_decrypted_file(game_slug):
+    return _game_dir(game_slug) / "game_decrypted.json"
+
+
 def slugify(title):
     slug = title.lower().strip()
     slug = re.sub(r"[^a-z0-9]+", "-", slug)
@@ -206,6 +210,19 @@ def save_game(world_state, game_slug, slot="autosave",
     with open(temp, "w", encoding="utf-8") as f:
         json.dump(to_write, f, indent=2, ensure_ascii=False)
     os.replace(temp, filename)
+
+    if slot == "autosave":
+        decrypted_filename = _game_decrypted_file(game_slug)
+        decrypted = copy.deepcopy(world_state)
+        if play_history is not None:
+            decrypted["_session"] = {
+                "play_history": play_history,
+                "console_lines": console_lines or [],
+            }
+        temp2 = decrypted_filename.with_suffix(".json.tmp")
+        with open(temp2, "w", encoding="utf-8") as f:
+            json.dump(decrypted, f, indent=2, ensure_ascii=False)
+        os.replace(temp2, decrypted_filename)
 
 
 def load_game(game_slug, slot="autosave"):
