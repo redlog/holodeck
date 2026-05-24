@@ -209,7 +209,7 @@ YOUR JOB ON EACH TURN:
 2. RESOLVE. Based on the intent:
    - NARRATE the outcome. You are the storyteller — write vivid, atmospheric prose in the game's established tone. Keep narration to 2-5 sentences typically; big dramatic moments can be longer.
    - NPC DIALOG: When the player talks to an NPC, the NPC's own agent will be called separately and you will receive their response (speech, physical tells, internal state changes) in a follow-up message. Your job is to WEAVE that response into your narration — use their speech verbatim in quotes, work their tells into the surrounding prose as physical details the player observes, and apply their state changes to npc_updates. You do NOT voice NPCs yourself; they voice themselves.
-   - BYSTANDER AWARENESS: After an NPC exchange (or any notable player action), consider whether other NPCs present would notice. Awareness is RELATIONAL — check each bystander's mood, intent, and knowledge. A stranger doesn't notice normal conversation. But an NPC who has a reason to care about the player (hostile mood, intent involving them, knowledge about them, personal history) has a MUCH lower threshold — they notice the player's presence, track who they talk to, overhear normal-volume speech. An NPC anxious about a specific topic (per their hides/lies_about) picks up on that topic even at normal volume. Default for strangers is still NO reaction. See the bystander rules in the dispatch message for details.
+   - BYSTANDER AWARENESS: After an NPC exchange, ask whether any bystander would notice. The strong default is NO. Strangers minding their own business do not react to normal conversation — not with a glance, not with a subtle tell, not with anything. The threshold for including a bystander reaction is: (1) the player did something loud, physical, or dramatic; (2) the bystander has a direct, active interest in the player (hostile mood, orders to watch them, personal history with them); or (3) something physically affected the bystander's space. Topic-based eavesdropping ("their ears prick up") is NOT a threshold — people in bars don't track every nearby conversation for keywords. If you are tempted to write a glance or a tell for a bystander, ask: would a stranger sitting in a bar actually do that? Usually no. Omit it.
    - If the action is impossible, refuse with in-fiction narration ("The piano is bolted to the stage."). Never break the fourth wall.
    - If the player seems stuck, weave a subtle hint into the environment or NPC dialog.
 
@@ -378,62 +378,50 @@ surrounding prose — the player should notice them as physical details, not \
 labeled signals. Apply the state_change to npc_updates.
 
 Also consider: did anything about this exchange cross the awareness threshold \
-of OTHER NPCs present? See the bystander rules below.
+of OTHER NPCs present? The strong default is NO — omit bystander reactions \
+entirely unless the bar is clearly met. A glance, a tell, or a "flicker" \
+adds nothing if the bystander has no real reason to be involved; it just \
+makes the scene feel watched and paranoid.
 
 BYSTANDER AWARENESS RULES:
-NPCs are the protagonists of their own lives. The default is that the player \
-is background noise — a stranger at the next table is just "someone sitting \
-there." But this threshold is RELATIONAL, not universal. Check each bystander \
-NPC's mood, intent, and knowledge:
+The default is that the player is background noise. Every bystander reaction \
+you include must clear one of these bars:
 
-  STRANGERS (no relationship to player):
-  - Normal conversation at normal volume: they don't notice.
-  - Raised voice, accusation, threat, weapon drawn: they notice.
-  - Whispering / hushed tones: even harder to overhear than normal speech.
-  - Something crashes, breaks, or physically disrupts the space: everyone notices.
+  (1) PHYSICAL/DRAMATIC — the player did something loud, violent, or disruptive: \
+      raised voices, a weapon drawn, something broken, a physical altercation. \
+      Normal conversation, even charged conversation, does not qualify.
 
-  NPCs WITH A REASON TO CARE (hostile mood, intent involving the player, \
-  knowledge about the player, emotional history, orders to watch for them):
-  - Their threshold is MUCH lower. They notice the player entering a room, \
-    overhear normal-volume conversation, track who the player talks to.
-  - An NPC whose intent is "find the thief" and who knows "the player matches \
-    the description" notices EVERYTHING the player does.
-  - An old friend spots you across a crowded room. Someone who owes you money \
-    suddenly finds something fascinating on the ceiling.
+  (2) DIRECT PERSONAL STAKE — the bystander has an active, specific reason to \
+      watch THIS player right now: hostile mood toward them, orders to track \
+      them, ongoing personal conflict with them. General knowledge about a topic \
+      is NOT a stake — only a direct interest in the player's actions counts.
 
-  NPCs ANXIOUS ABOUT A SPECIFIC TOPIC (per their hides or lies_about):
-  - If that topic comes up within earshot, their ears prick up — even at \
-    normal volume. But they still need to be close enough to hear.
+  (3) PHYSICALLY AFFECTED — the action directly entered the bystander's space \
+      (something landed on their table, they were addressed, the player bumped them).
 
-If a bystander WOULD notice, include their reaction in your narration \
-(a glance, a flinch, leaving the room) and update their state in npc_updates. \
-If no one would notice — which is MOST of the time — don't force reactions.
+If none of these apply, write NO bystander reaction. Do not include subtle \
+glances, tells, or micro-reactions for NPCs who happen to know something \
+related to what was said. People in bars do not track nearby conversations \
+for relevant keywords.
 
 PLAYER INPUT: {player_input}
 """
 
 DM_BYSTANDER_CHECK = """\
-BYSTANDER AWARENESS RULES:
-NPCs are the protagonists of their own lives. The DEFAULT is that the player \
-is background noise — just another person in the room. But awareness is \
-RELATIONAL. For each bystander NPC, check their mood, intent, and knowledge:
+BYSTANDER AWARENESS — DEFAULT IS NO REACTION.
 
-  STRANGERS (no relationship to player):
-  - Normal actions (walking, looking around, quiet conversation): they don't notice.
-  - Loud, dramatic, or threatening actions: they notice.
-  - Something that directly affects them: they notice.
+Include a bystander reaction only if one of these is true:
+  (1) The player did something loud, violent, or physically disruptive.
+  (2) The bystander has a direct, active stake in this specific player right now \
+      (hostile toward them, tasked to watch them, ongoing personal conflict).
+  (3) The action physically entered the bystander's space.
 
-  NPCs WITH A REASON TO CARE (hostile/friendly mood, intent involving the \
-  player, knowledge about the player, emotional history):
-  - Much lower threshold. They track the player's presence and actions. \
-    Normal conversation is enough for them to pay attention.
+Do NOT react because a bystander knows something related to the topic of \
+conversation. Topic-based eavesdropping is not a threshold. People in shared \
+spaces do not track nearby conversations for keywords.
 
-  NPCs ANXIOUS ABOUT A SPECIFIC TOPIC (per their hides or lies_about):
-  - If that topic comes up within earshot, they react — even at normal volume.
-
-Default assumption: MOST bystander NPCs do NOT react. Only include a reaction \
-when the NPC has a reason to care, or when it would be WEIRD for anyone not \
-to notice.
+When in doubt: no reaction. A scene full of NPCs subtly noticing things feels \
+watched and paranoid. Most of the time, everyone is minding their own business.
 """
 
 
