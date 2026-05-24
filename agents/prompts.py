@@ -111,15 +111,15 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
      - public_persona (what the player would soon learn through observation)
      - voice: a short description of HOW they talk — cadence, vocabulary, verbal tics, accent. Example: "Terse. Drops articles. Speaks like he's tired of everyone." or "Warm and rambling, loses track of sentences, laughs at her own jokes."
      - knows: list of 2-5 specific facts this NPC knows that could be relevant. Concrete, not vague. Example: ["the foreman drank here every night", "saw a hooded figure leave the docks at midnight"]
-     - hides: list of facts they know but will NOT volunteer. These are things the player must earn through clever play. Example: ["was paid fifty crowns to forget what he saw"]
-     - lies_about: list of topics they will actively deflect or lie about if asked directly. Example: ["whether he saw anyone leave the docks that night"]
+     - hides: list of facts they know but will NOT volunteer. Most NPCs in non-mystery games have an EMPTY list here — only add entries when there is a specific, character-grounded reason for secrecy (embarrassment, self-protection, loyalty, fear). Do NOT add hidden facts just to make the character seem more interesting. Example for a mystery game: ["was paid fifty crowns to forget what he saw"]. Example for a social or slice-of-life game: []
+     - lies_about: list of topics they will actively deflect or lie about if asked directly. This should be EMPTY for most NPCs in non-thriller, non-mystery games. A friendly bartender, a shop owner, a coworker — normal people are not running deceptions. Only add an entry when it follows directly from the character's circumstances. Example for a mystery game: ["whether he saw anyone leave the docks that night"]. Example for a cozy or social game: []
      - current_location_id (probably the starting location)
      - current_intent (what they're doing right now)
      - mood_toward_player (a short adjective phrase)
 
-3. WRITE THE DM BIBLE — the hidden truths. This is critical for the mystery and consistency of the game. Decide NOW, in private:
-     - secrets: 3–8 entries. Concrete facts you've committed to. Each has an id, the fact, and revealed=false. Examples: "the murderer is the harbormaster's son", "behind the bookshelf in the office is a key to the warehouse", "the bartender is being blackmailed". DO NOT be vague. Make decisions.
-     - planned_beats: 3–6 entries. Short text describing how the story might unfold if the player probes correctly. These are flexible — the player can ignore or trigger them. Example: "If player searches the desk, they find a photo with a partial address on the back."
+3. WRITE THE DM BIBLE — the hidden truths. Decide NOW, in private, what is true about this world that the player doesn't know yet.
+     - secrets: Concrete facts you've committed to. Each has an id, the fact, and revealed=false. DO NOT be vague — make decisions. CALIBRATE TO GENRE: a mystery or thriller warrants 4–8 secrets, often involving deception, crimes, or hidden motives. A social game, a cozy adventure, or a slice-of-life setting might have 1–3 secrets — and they need not be dark. A hotel bar game might have "the pianist is in town to propose to someone" or "the woman at the end of the bar just got a promotion she hasn't told anyone about" — not everyone is running a con. Secrets drive the story forward; they don't have to make everyone villainous.
+     - planned_beats: 2–5 entries. Short text describing how the story might unfold if the player probes correctly. These are flexible — the player can ignore or trigger them. Example: "If player searches the desk, they find a photo with a partial address on the back." Match the tone: in a mystery, beats reveal crimes; in a social game, beats might reveal relationships, backstory, or opportunities.
      - scratchpad: a paragraph of free-form notes you'll want to reference at play time. The shape of the world, the major factions, the timeline of past events.
 
 4. SEED PLOT THREADS. Convert the interview's plot_seeds into structured plot_threads. Each thread has an id, summary, status ("active" or "background"), and known_to_player. The player-volunteered seeds (e.g., "Vesper's brother was killed three years ago") become known_to_player=true threads. You may add 1–2 additional hidden threads of your own (known_to_player=false) tied to your bible secrets — these are the threads the player will discover.
@@ -149,8 +149,8 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
       "public_persona": "Bartender at the Bent Tankard; seems to know everyone but says little.",
       "voice": "Terse. Drops articles. Speaks like he's tired of everyone.",
       "knows": ["the foreman drank here every night", "saw a hooded figure leave the docks at midnight", "the harbormaster's son has been throwing money around"],
-      "hides": ["was paid fifty crowns to forget what he saw that night"],
-      "lies_about": ["whether he saw anyone leave the docks that night"],
+      "hides": [],
+      "lies_about": [],
       "current_location_id": "tavern",
       "current_intent": "Closing up, hoping for no trouble tonight.",
       "mood_toward_player": "wary but polite"
