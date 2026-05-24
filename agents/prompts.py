@@ -93,15 +93,17 @@ You are given the world state captured from the interview (title, tone, visual s
 
 Your job, in ONE response, is to:
 
+BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (step 5). Hold that firmly in mind as you write every image_prompt and every NPC's current_intent — they must all be consistent with that time. A nightclub at 9 AM should look empty with staff mopping floors; the same club at midnight should be packed and loud. A police precinct at 3 AM is skeleton crew; at 9 AM it is busy. Do not set the clock after the fact and hope it matches — commit to the time first.
+
 1. CREATE THE STARTING LOCATION as a structured entry. Be concrete: name it, summarize it, and write a rich image_prompt. The image_prompt is CRITICAL — it becomes the visual ground truth for this location. The player will see a painted scene based on this description and will examine every detail closely. Write it as a vivid painterly description including:
-   - The physical space, lighting, mood, atmosphere
+   - The physical space, lighting, mood, atmosphere — ALL consistent with the time of day
    - Specific props and objects (documents on a desk, items on shelves, stains, wear patterns)
    - Environmental storytelling — visual clues that hint at your secrets and planned beats (a half-open drawer, a photograph, a specific book title, a mark on the wall)
-   - Any NPCs present and what they're doing physically
+   - Any NPCs present and what they're doing physically — only people who would actually be there at this time
    - Details that reward the observant player — not everything should be obvious
    List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
-2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location and premise. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present.
+2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location, premise, AND TIME OF DAY. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present at this specific time.
 
    For each NPC, fill in:
      - name, description (purely visual), public_persona (what the player would soon learn through observation)
@@ -120,7 +122,7 @@ Your job, in ONE response, is to:
 
 4. SEED PLOT THREADS. Convert the interview's plot_seeds into structured plot_threads. Each thread has an id, summary, status ("active" or "background"), and known_to_player. The player-volunteered seeds (e.g., "Vesper's brother was killed three years ago") become known_to_player=true threads. You may add 1–2 additional hidden threads of your own (known_to_player=false) tied to your bible secrets — these are the threads the player will discover.
 
-5. SET THE NARRATIVE CLOCK. Pick a concrete in-fiction date and time of day for the opening scene. This anchors the world — NPCs have schedules, shops open and close, light changes. Format: a short natural-language string like "1888-10-14, late evening" or "Day 1, morning" or "Tuesday, 3:47 AM". Match the genre (a noir gets "Tuesday night, 11 PM"; a fantasy gets "the third day of the Harvest Moon, dusk").
+5. SET THE NARRATIVE CLOCK. Pick a concrete in-fiction date and time of day for the opening scene. This anchors the world — NPCs have schedules, shops open and close, light changes. Format: a short natural-language string like "1888-10-14, late evening" or "Day 1, morning" or "Tuesday, 3:47 AM". Match the genre (a noir gets "Tuesday night, 11 PM"; a fantasy gets "the third day of the Harvest Moon, dusk"). Confirm that your image_prompts and NPC intents all make sense at this time — if not, revise them.
 
 RESPOND WITH JSON IN THIS EXACT SHAPE:
 
@@ -242,7 +244,8 @@ STATE CHANGES — field details:
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
   {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "present_npc_ids": [], "discovered_features": [...]}
   The image_prompt is CRITICAL — it becomes the visual ground truth for this location. Write it as a rich, detailed painterly description that an image generator can paint from. Include:
-    * The physical space, lighting, mood, and atmosphere
+    * The physical space, lighting, mood, and atmosphere — ALL reflecting the current time of day (check "Current time" in the world state)
+    * Who is actually present at this place given the time — an empty bar at 9 AM, a packed one at midnight
     * Specific props and objects the player might examine or interact with
     * Environmental storytelling — clues, evidence, or details that hint at the plot (a half-open drawer, a stain on the floor, a photograph turned face-down)
     * Any NPCs present and what they're doing
@@ -289,6 +292,7 @@ STATE CHANGES — field details:
     * Travel implies significant time ("I walk across town to the docks" = minutes; "I ride to the next village" = hours)
     * You fast-forward through uneventful time for pacing
   Do NOT advance the clock for normal actions (looking around, talking, picking things up). Most turns have no clock change.
+  When the clock advances significantly (crossing dawn, dusk, or several hours), ask yourself: has the lighting or occupancy of the current location changed enough to warrant a new image? If yes, add it to image_dirty with a description of the time-based change (e.g., "dawn light now fills the room, the overnight crowd has gone home").
 
 - "npc_tick": when advance_clock is set AND time passes significantly (more than a few minutes), update what OFF-SCREEN NPCs have been doing. This is a dict of npc_id → partial NPC state, just like npc_updates, but specifically for NPCs who are NOT in the current scene. Ask yourself: given this NPC's persona, intent, and the elapsed time, what would they reasonably be doing now?
   Examples:
