@@ -228,6 +228,7 @@ RESPONSE FORMAT — respond with JSON:
   "state_changes": {
     "current_location_id": null,
     "create_location": null,
+    "new_npcs": {},
     "advance_clock": null,
     "image_dirty": [],  // each entry: {"id": "location_id", "change": "what visually changed"}
     "inventory_add": [],
@@ -245,6 +246,12 @@ RESPONSE FORMAT — respond with JSON:
 STATE CHANGES — field details:
 
 - "current_location_id": set to a location id string when the player moves. null if staying put.
+
+- "new_npcs": dynamically create NPCs during play. Use this in three situations:
+  (1) PROACTIVE — when the player enters a new location, create named/important people who would be present there (a bartender who knows the regulars, the police chief who runs the precinct). Background extras ("a few drunks", "officers at desks") stay as visual flavor in the image_prompt only — do NOT create an NPC for every face in the crowd. Use judgment: if the player would obviously want to talk to someone, create them.
+  (2) REACTIVE — when the player tries to talk to someone described in the scene who isn't yet an NPC, create them here so the conversation can proceed. The player said "talk to the bartender" and there's no bartender NPC? Create one now.
+  (3) REFERENCED — when an NPC names a specific person who should exist in the world ("you should talk to Officer Peterson"), create that person so the player can actually find and talk to them.
+  Format: same as creation phase new_npcs. Each entry needs name, description, public_persona, voice, knows ([] is fine for thin NPCs), hides, lies_about, current_location_id, current_intent, mood_toward_player. The NPC will automatically be added to their location's present_npc_ids.
 
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
   {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "present_npc_ids": [], "discovered_features": [...]}
@@ -474,11 +481,19 @@ RESPOND WITH JSON:
   "internal_state_change": {{
     "mood_toward_player": "updated mood (only if it changed)",
     "current_intent": "updated intent (only if it changed)"
-  }}
+  }},
+  "new_npcs": {{}}
 }}
 
 The "tells" list can be empty if you're poker-faced. The internal_state_change \
 fields should only include keys whose values actually changed — omit unchanged fields.
+
+"new_npcs": if you name a SPECIFIC PERSON who should exist in this world — a \
+named contact, a suspect, a colleague, someone the player might want to find — \
+include their definition here so they can be sought out. Use the same fields as \
+NPC creation (name, description, public_persona, voice, knows, hides, lies_about, \
+current_location_id, current_intent, mood_toward_player). Only for named individuals \
+central to your knowledge or story. Leave empty {{}} for random strangers you mention.
 
 Output ONLY the JSON, no commentary or markdown fences.
 """

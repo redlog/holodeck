@@ -67,6 +67,7 @@ class NPCAgent(BaseAgent):
             parsed.setdefault("speech", "...")
             parsed.setdefault("tells", [])
             parsed.setdefault("internal_state_change", {})
+            parsed.setdefault("new_npcs", {})
             _log(f"{npc_name} says: {parsed['speech'][:80]}")
             return parsed
         except Exception as e:

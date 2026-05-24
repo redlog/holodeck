@@ -494,7 +494,12 @@ class DungeonMaster(BaseAgent):
             scene_context += f"Also present: {', '.join(other_npcs)}."
 
         _log(f"Dispatching to NPC agent: {npc_data.get('name', npc_id)}")
-        return self._npc_agent.speak(npc_data, player_input, scene_context, self.world_state)
+        response = self._npc_agent.speak(npc_data, player_input, scene_context, self.world_state)
+        # Apply any NPCs the NPC introduced (e.g., "you should talk to Officer Peterson")
+        npc_introduced = response.pop("new_npcs", None) or {}
+        if npc_introduced:
+            self._apply_new_npcs(npc_introduced)
+        return response
 
     def _weave_npc_response(self, npc_id, npc_response, player_input, initial_parsed):
         """Send the NPC response back to the DM to weave into narration."""
@@ -770,6 +775,31 @@ class DungeonMaster(BaseAgent):
 
         return "\n\n".join(sections)
 
+    def _apply_new_npcs(self, new_npcs):
+        """Add dynamically created NPCs to world state and their location's present list."""
+        ws = self.world_state
+        for npc_id, npc_def in new_npcs.items():
+            if not isinstance(npc_def, dict):
+                continue
+            if npc_id in ws.get("npcs", {}):
+                _log(f"Dynamic NPC {npc_id} already exists, skipping")
+                continue
+            npc_def.setdefault("portrait_path", None)
+            npc_def.setdefault("known_to_player", True)
+            npc_def.setdefault("dialog_summary_with_player", "")
+            npc_def.setdefault("voice", "")
+            npc_def.setdefault("knows", [])
+            npc_def.setdefault("hides", [])
+            npc_def.setdefault("lies_about", [])
+            npc_def["id"] = npc_id
+            ws.setdefault("npcs", {})[npc_id] = npc_def
+            npc_loc_id = npc_def.get("current_location_id")
+            if npc_loc_id:
+                loc_data = ws.get("locations", {}).get(npc_loc_id, {})
+                if npc_id not in loc_data.get("present_npc_ids", []):
+                    loc_data.setdefault("present_npc_ids", []).append(npc_id)
+            _log(f"Dynamic NPC created: {npc_def.get('name', npc_id)} (id={npc_id})")
+
     def _apply_play_changes(self, parsed):
         ws = self.world_state
         changes = parsed.get("state_changes")
@@ -787,6 +817,11 @@ class DungeonMaster(BaseAgent):
             new_loc.setdefault("events_log_summary", "")
             ws.setdefault("locations", {})[loc_id] = new_loc
             _log(f"Created new location: {loc_id}")
+
+        # Dynamically created NPCs (must happen before location change so present_npc_ids is correct)
+        new_npcs = changes.get("new_npcs") or {}
+        if new_npcs:
+            self._apply_new_npcs(new_npcs)
 
         # Location change
         new_loc_id = changes.get("current_location_id")

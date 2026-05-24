@@ -767,6 +767,11 @@ class PlayMode:
             if npc:
                 self._speaker_id = speaker
                 source_tag = "dm"  # still styled as DM narration
+                # Generate portrait on first conversation if not yet done
+                if not _portrait_file_exists(npc.get("portrait_path")) and self._portrait_agent:
+                    visual_style = self.world_state.get("meta", {}).get("visual_style", "")
+                    self._portrait_agent.generate_portrait(speaker, npc, visual_style)
+                    _log(f"Triggered portrait for NPC on first conversation: {speaker}")
             else:
                 source_tag = "dm"
         else:
