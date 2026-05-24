@@ -302,6 +302,7 @@ class PlayMode:
         self._render_bottom_panel()
         self._render_portrait()
         self._render_console()
+        self._render_clock()
         self.text_input.render(self.surface)
         self._render_drawer_tab()
         if self._drawer_open:
@@ -459,6 +460,16 @@ class PlayMode:
         for source, text in old_lines:
             self.console_lines.append((source, text))
         self._clamp_scroll()
+
+    def _render_clock(self):
+        clock = self.world_state.get("narrative_clock", "")
+        if not clock:
+            return
+        surf = self.font_tiny.render(clock, True, COLOR_SYSTEM)
+        input_y = INTERNAL_HEIGHT - INPUT_HEIGHT - INPUT_MARGIN
+        x = self._main_w - surf.get_width() - INPUT_MARGIN
+        y = input_y - surf.get_height() - 3
+        self.surface.blit(surf, (x, y))
 
     def _render_drawer_tab(self):
         """Render the tab handle on the right edge that toggles the drawer."""
