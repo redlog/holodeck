@@ -99,14 +99,16 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
    - The physical space, lighting, mood, atmosphere — ALL consistent with the time of day
    - Specific props and objects (documents on a desk, items on shelves, stains, wear patterns)
    - Environmental storytelling — visual clues that hint at your secrets and planned beats (a half-open drawer, a photograph, a specific book title, a mark on the wall)
-   - Any NPCs present and what they're doing physically — only people who would actually be there at this time
+   - Any NPCs present: describe each one using their exact visual description (gender, age, skin tone, hair, build, clothing) and what they're doing. The room image and the portrait must show the same person — use the same description in both.
    - Details that reward the observant player — not everything should be obvious
    List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
 2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location, premise, AND TIME OF DAY. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present at this specific time.
 
    For each NPC, fill in:
-     - name, description (purely visual), public_persona (what the player would soon learn through observation)
+     - name
+     - description: a rich, purely VISUAL description — 2–4 sentences. Cover: gender and approximate age, ethnicity/skin tone, hair (color, length, style), build and height, face (jaw, eyes, any distinctive features), and specific clothing. This description becomes the source of truth for both the portrait painter and the room scene painter — be concrete enough that two artists would paint the same person. Bad: "A tall man in a suit." Good: "A lean Black man in his mid-forties, close-cropped salt-and-pepper hair, sharp cheekbones, wire-rimmed glasses, wearing a charcoal double-breasted suit with a burgundy pocket square."
+     - public_persona (what the player would soon learn through observation)
      - voice: a short description of HOW they talk — cadence, vocabulary, verbal tics, accent. Example: "Terse. Drops articles. Speaks like he's tired of everyone." or "Warm and rambling, loses track of sentences, laughs at her own jokes."
      - knows: list of 2-5 specific facts this NPC knows that could be relevant. Concrete, not vague. Example: ["the foreman drank here every night", "saw a hooded figure leave the docks at midnight"]
      - hides: list of facts they know but will NOT volunteer. These are things the player must earn through clever play. Example: ["was paid fifty crowns to forget what he saw"]
@@ -143,7 +145,7 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
   "new_npcs": {
     "old_tom": {
       "name": "Old Tom",
-      "description": "Heavyset, balding, white apron over a denim shirt.",
+      "description": "A heavyset white man in his sixties, completely bald on top with a fringe of grey stubble above his ears. Fleshy, broken-veined nose; small, watchful pale blue eyes under heavy brows. A thick grey mustache stained amber at the center. Broad shoulders running to fat, wearing a stained white apron over a faded blue denim shirt with the sleeves rolled to the elbows.",
       "public_persona": "Bartender at the Bent Tankard; seems to know everyone but says little.",
       "voice": "Terse. Drops articles. Speaks like he's tired of everyone.",
       "knows": ["the foreman drank here every night", "saw a hooded figure leave the docks at midnight", "the harbormaster's son has been throwing money around"],
@@ -252,6 +254,7 @@ STATE CHANGES — field details:
   (2) REACTIVE — when the player tries to talk to someone described in the scene who isn't yet an NPC, create them here so the conversation can proceed. The player said "talk to the bartender" and there's no bartender NPC? Create one now.
   (3) REFERENCED — when an NPC names a specific person who should exist in the world ("you should talk to Officer Peterson"), create that person so the player can actually find and talk to them.
   Format: same as creation phase new_npcs. Each entry needs name, description, public_persona, voice, knows ([] is fine for thin NPCs), hides, lies_about, current_location_id, current_intent, mood_toward_player. The NPC will automatically be added to their location's present_npc_ids.
+  CRITICAL — description must be a rich visual portrait (2–4 sentences): gender, approximate age, ethnicity/skin tone, hair, build, face, clothing. This is the source of truth for both the portrait painter and the room image — be specific enough that both artists paint the same person. If this NPC is already described in the current room's image_prompt or narration, your description here must match exactly.
 
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
   {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "present_npc_ids": [], "discovered_features": [...]}
@@ -493,7 +496,10 @@ named contact, a suspect, a colleague, someone the player might want to find —
 include their definition here so they can be sought out. Use the same fields as \
 NPC creation (name, description, public_persona, voice, knows, hides, lies_about, \
 current_location_id, current_intent, mood_toward_player). Only for named individuals \
-central to your knowledge or story. Leave empty {{}} for random strangers you mention.
+central to your knowledge or story. Leave empty {{}} for random strangers you mention. \
+description must be a rich visual portrait (2–4 sentences): gender, approximate age, \
+ethnicity/skin tone, hair, build, face, clothing — specific enough for an artist to \
+paint a consistent portrait and room scene.
 
 Output ONLY the JSON, no commentary or markdown fences.
 """
@@ -525,12 +531,16 @@ Render the entire frame with care — every region should be finished painted ar
 # ===================================================================== #
 
 PORTRAIT_TEMPLATE = (
-    "{visual_style}. "
-    "Character portrait for a graphical text adventure. "
-    "Head and shoulders, three-quarter view, expressive face with clear features. "
-    "Background must be a single flat solid color that complements the character. "
+    "Paint a character portrait for a graphical text adventure. "
+    "Head and shoulders, three-quarter view, expressive face. "
+    "Background: single flat solid color complementing the character. "
     "NO gradients, NO patterns, NO scenery, NO text or labels. "
-    "Character: {description}"
+    "CHARACTER (this description is the absolute authority on this person's appearance — "
+    "gender, age, ethnicity, hair, clothing, and features must match it exactly): "
+    "{name} — {description} "
+    "PHOTOGRAPHIC STYLE (apply only to film grain, color grading, and lighting — "
+    "do NOT derive any appearance traits — hair, facial hair, clothing — from this): "
+    "{visual_style}"
 )
 
 

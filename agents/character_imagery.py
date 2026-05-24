@@ -46,7 +46,7 @@ class CharacterImageryAgent(BaseAgent):
             name = char_def.get("name", char_id)
 
             _log(f"[{char_id}] painting portrait of {name}...")
-            portrait_bytes = self._generate_portrait(description, visual_style, char_id)
+            portrait_bytes = self._generate_portrait(name, description, visual_style, char_id)
             if not portrait_bytes:
                 self._result_queue.put(("error", char_id, "Failed to generate portrait"))
                 return
@@ -63,9 +63,10 @@ class CharacterImageryAgent(BaseAgent):
         finally:
             self._pending.pop(char_id, None)
 
-    def _generate_portrait(self, description, visual_style, char_id=""):
+    def _generate_portrait(self, name, description, visual_style, char_id=""):
         prompt = PORTRAIT_TEMPLATE.format(
             visual_style=visual_style or "painterly adventure-game art",
+            name=name,
             description=description,
         )
         return self._call_image(prompt, aspect_ratio="1:1", context=f"portrait:{char_id}")

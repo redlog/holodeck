@@ -449,21 +449,30 @@ class DungeonMaster(BaseAgent):
         loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
         present_ids = loc.get("present_npc_ids", [])
 
+        import re
+
+        def name_matches(target, name, npc_id):
+            name_lower = name.lower()
+            # Exact substring
+            if target in name_lower:
+                return True
+            # Word-based: strip punctuation and check all target words appear in name words
+            name_words = set(re.sub(r"[^a-z0-9\s]", "", name_lower).split())
+            target_words = re.sub(r"[^a-z0-9\s]", "", target).split()
+            if target_words and all(w in name_words for w in target_words):
+                return True
+            # ID contains target
+            if target in npc_id:
+                return True
+            return False
+
         # Direct id match
         if target in npcs and target in present_ids:
             return target
 
-        # Name match against present NPCs
         for nid in present_ids:
             npc = npcs.get(nid, {})
-            if target in npc.get("name", "").lower():
-                return nid
-
-        # Fuzzy: any present NPC whose name or id contains the target
-        for nid in present_ids:
-            npc = npcs.get(nid, {})
-            name_lower = npc.get("name", "").lower()
-            if target in name_lower or target in nid:
+            if name_matches(target, npc.get("name", ""), nid):
                 return nid
 
         _log(f"Could not resolve talk target '{target}' to a present NPC")
@@ -543,13 +552,13 @@ class DungeonMaster(BaseAgent):
             }
 
     def _merge_talk_results(self, initial, woven, npc_id):
-        """Merge the initial DM lead-in with the woven NPC response."""
-        lead_in = initial.get("narration", "")
-        npc_narration = woven.get("narration", "")
-        merged_narration = f"{lead_in}\n\n{npc_narration}".strip()
+        """Merge the initial DM lead-in with the woven NPC response.
 
+        The woven narration already contains the full NPC interaction, so the
+        initial lead-in is dropped — it was generated before the NPC agent ran
+        and often has the NPC speaking prematurely, causing duplicate/contradictory dialog.
+        """
         result = dict(woven)
-        result["narration"] = merged_narration
         result["speaker"] = npc_id
         result["intent"] = initial.get("intent", {})
         return result

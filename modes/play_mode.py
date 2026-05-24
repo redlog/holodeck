@@ -914,6 +914,9 @@ class PlayMode:
                 npc = self.world_state.get("npcs", {}).get(target_id)
                 if npc:
                     npc["portrait_path"] = path
+            # Force reload if this is the currently displayed speaker.
+            if target_id == self._speaker_id:
+                self._portrait_loaded_path = None
             return True
 
         if kind == "room" and tag == "room_complete":
@@ -922,6 +925,10 @@ class PlayMode:
             if loc:
                 loc["image_path"] = path
                 loc["image_dirty"] = False
+                # Force reload: the file was overwritten in-place so the path
+                # is unchanged, which normally suppresses reload.
+                if target_id == self.world_state.get("current_location_id"):
+                    self._room_loaded_path = None
             return True
 
         return False
