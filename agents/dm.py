@@ -77,6 +77,9 @@ class DungeonMaster(BaseAgent):
         self._play_cache = None
         if self._world_already_seeded():
             self.phase = self.PHASE_PLAY
+            # Repair authored maps on load so older/buggy closed games self-heal.
+            if self._is_closed_world():
+                self._validate_closed_world_map()
         elif self._setup_already_complete():
             self.phase = self.PHASE_CREATING
         else:
@@ -258,6 +261,8 @@ class DungeonMaster(BaseAgent):
             ], context="author")
             parsed = json.loads(_strip_json_fences(raw))
             self._apply_creation(parsed)
+            if self._is_closed_world():
+                self._validate_closed_world_map()
             self.phase = self.PHASE_PLAY
             _log("Creation complete — transitioning to play phase")
             return {
@@ -358,6 +363,52 @@ class DungeonMaster(BaseAgent):
                 "visual_description": item_entry.get("visual_description", ""),
             })
             _log(f"Starting inventory: {item_name} (id={item_id})")
+
+    def _validate_closed_world_map(self):
+        """Repair the authored map so the closed world stays coherent.
+
+        Closed mode forbids creating locations during play, so an exit that
+        points at a nonexistent location id would strand the player. Prune
+        dangling exits, force exits to be bidirectional, and warn about any
+        location unreachable from the start.
+        """
+        ws = self.world_state
+        locs = ws.get("locations", {})
+        valid_ids = set(locs)
+
+        # Drop exits pointing at locations that don't exist.
+        for lid, loc in locs.items():
+            exits = loc.get("exits") or []
+            kept = [e for e in exits if e in valid_ids]
+            dropped = [e for e in exits if e not in valid_ids]
+            if dropped:
+                _log(f"[closed-world] {lid}: pruned dangling exits {dropped} "
+                     f"(no such location)")
+            loc["exits"] = kept
+
+        # Force bidirectionality — if A→B exists, ensure B→A exists too.
+        for lid, loc in locs.items():
+            for dest in loc.get("exits", []):
+                dest_loc = locs.get(dest, {})
+                dest_exits = dest_loc.setdefault("exits", [])
+                if lid not in dest_exits:
+                    dest_exits.append(lid)
+                    _log(f"[closed-world] added reverse exit {dest} -> {lid}")
+
+        # Warn about locations unreachable from the start (coherence smell).
+        start = ws.get("current_location_id")
+        if start and start in locs:
+            seen, frontier = {start}, [start]
+            while frontier:
+                cur = frontier.pop()
+                for dest in locs.get(cur, {}).get("exits", []):
+                    if dest not in seen:
+                        seen.add(dest)
+                        frontier.append(dest)
+            unreachable = valid_ids - seen
+            if unreachable:
+                _log(f"[closed-world] WARNING: locations unreachable from "
+                     f"'{start}': {sorted(unreachable)}")
 
     # ------------------------------------------------------------------ #
     # Play phase

@@ -221,10 +221,16 @@ A. AUTHOR EVERY LOCATION NOW. new_locations must contain the ENTIRE map the
    be created later — there is no "later" creation in closed mode.
 
 B. CONNECT THE MAP WITH EXITS. Every location MUST include an "exits" field: a
-   list of the location ids you can travel to directly from it. Make the graph
-   bidirectional unless a one-way passage is intentional (a trapdoor, a cliff).
-   The player can only move along these exits — so make sure the map is fully
-   connected and every important place is reachable from the start.
+   list of the location ids you can travel to directly from it. CRITICAL: every
+   id in an exits list MUST be the EXACT key of a location you defined in
+   new_locations — character for character. Do not invent ids, abbreviate them,
+   or reference a place you didn't create (an exit to "main_road_to_lyceum" when
+   the location is keyed "main_road_to_agora" is a fatal error). Before you
+   finish, re-read every exits list and confirm each id appears as a key in
+   new_locations. Make the graph bidirectional — if A lists B as an exit, B must
+   list A — unless a one-way passage is intentional (a trapdoor, a cliff). The
+   player can only move along these exits, so the map must be fully connected and
+   every place reachable from the starting location.
 
 C. DESIGN A REAL PUZZLE STRUCTURE WITH A GUARANTEED SOLUTION. The game must be
    winnable. Lay out, in the bible, an explicit solution path: the sequence (or
