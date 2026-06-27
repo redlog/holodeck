@@ -44,10 +44,28 @@ async function loadGameList() {
   for (const g of games) {
     const li = document.createElement("li");
     const when = g.last_played ? new Date(g.last_played).toLocaleString() : "never";
-    li.innerHTML = `<span>${escapeHtml(g.title)}</span><span class="when">${when}</span>`;
+    li.innerHTML =
+      `<span class="title">${escapeHtml(g.title)}</span>` +
+      `<span class="when">${when}</span>` +
+      `<button class="del" title="Delete this adventure">×</button>`;
     li.onclick = () => openGame(g.slug);
+    li.querySelector(".del").onclick = (e) => {
+      e.stopPropagation(); // don't open the game we're deleting
+      deleteGame(g);
+    };
     ul.appendChild(li);
   }
+}
+
+async function deleteGame(g) {
+  if (!confirm(`Delete "${g.title}" permanently? This cannot be undone.`)) return;
+  try {
+    await api("DELETE", `/api/games/${g.slug}`);
+  } catch (err) {
+    alert(`Could not delete the adventure.\n${err.message}`);
+    return;
+  }
+  loadGameList();
 }
 
 // ---------- game lifecycle ----------

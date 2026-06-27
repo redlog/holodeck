@@ -70,7 +70,25 @@ button[hidden] { display: none; }
   justify-content: space-between;
 }
 #game-list li:hover { background: var(--panel); }
-#game-list .when { color: var(--system); font-size: 12px; }
+#game-list li .title { flex: 1; }
+#game-list .when { color: var(--system); font-size: 12px; margin: 0 12px; }
+#game-list .del {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid var(--divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--system);
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+#game-list li:hover .del { opacity: 1; }
+#game-list .del:hover { color: #e66; border-color: #e66; }
 
 /* ---------- stage: room / sidebar / transcript / input ---------- */
 #stage {

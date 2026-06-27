@@ -3,6 +3,8 @@ import copy
 import json
 import os
 import re
+import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -183,6 +185,31 @@ def list_games():
         else:
             games.append({"slug": d.name, "title": d.name, "last_played": None})
     return games
+
+
+def delete_game(game_slug):
+    """Permanently remove a game directory. Returns True if something was
+    deleted, False if it didn't exist. Raises ValueError on an unsafe slug,
+    or OSError if the directory can't be removed after retries."""
+    # Guard against path traversal — the slug comes straight from a URL.
+    if not game_slug or "/" in game_slug or "\\" in game_slug or game_slug in (".", ".."):
+        raise ValueError(f"unsafe game slug: {game_slug!r}")
+    target = (GAMES_DIR / game_slug).resolve()
+    if target.parent != GAMES_DIR.resolve():
+        raise ValueError(f"slug escapes games dir: {game_slug!r}")
+    if not target.is_dir():
+        return False
+    # Windows + Dropbox can transiently lock a file mid-delete (same race as
+    # save_game's WinError). Retry a few times before giving up.
+    last_err = None
+    for attempt in range(5):
+        try:
+            shutil.rmtree(target)
+            return True
+        except OSError as e:
+            last_err = e
+            time.sleep(0.2 * (attempt + 1))
+    raise last_err
 
 
 def save_game(world_state, game_slug, slot="autosave",

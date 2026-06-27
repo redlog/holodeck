@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from world.bible import (
-    GAMES_DIR, list_games, create_game, load_game, get_save_slots,
+    GAMES_DIR, list_games, create_game, load_game, get_save_slots, delete_game,
 )
 from server.session import GameSession
 from server.view import to_player_view
@@ -87,6 +87,26 @@ def api_create_game():
         _sessions[slug] = sess
     sess.start()
     return {"view": to_player_view(sess)}
+
+
+@app.delete("/api/games/{slug}")
+def api_delete_game(slug: str):
+    # Evict any live session first so nothing keeps the files open or
+    # re-autosaves the directory we're about to remove.
+    with _sessions_lock:
+        _sessions.pop(slug, None)
+    try:
+        existed = delete_game(slug)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        # Windows/Dropbox can transiently lock files mid-delete.
+        _log(f"delete failed for {slug}: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not delete: {e}")
+    if not existed:
+        raise HTTPException(status_code=404, detail=f"No such game: {slug}")
+    _log(f"Deleted game: {slug}")
+    return {"deleted": slug}
 
 
 @app.post("/api/games/{slug}/open")
