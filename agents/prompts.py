@@ -97,10 +97,18 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
 
 1. CREATE THE STARTING LOCATION as a structured entry. Be concrete: name it, summarize it, and write a rich image_prompt. The image_prompt is CRITICAL — it becomes the visual ground truth for this location. The player will see a painted scene based on this description and will examine every detail closely. Write it as a vivid painterly description including:
    - The physical space, lighting, mood, atmosphere — ALL consistent with the time of day
+   - The CURRENT PHYSICAL STATE of the place, made explicit. The premise has consequences the painter will not infer on its own — spell them out. "Long abandoned" means: cold dead hearth full of grey ash, candle stubs of hardened melted wax never lit, thick dust, cobwebs, no flames, no glow, no warm light anywhere. "Recently ransacked" means overturned furniture and scattered papers. State the condition; do not assume the painter shares your mental image.
    - Specific props and objects (documents on a desk, items on shelves, stains, wear patterns)
    - Environmental storytelling — visual clues that hint at your secrets and planned beats (a half-open drawer, a photograph, a specific book title, a mark on the wall)
    - Any NPCs present: describe each one using their exact visual description (gender, age, skin tone, hair, build, clothing) and what they're doing. The room image and the portrait must show the same person — use the same description in both.
    - Details that reward the observant player — not everything should be obvious
+
+   PHRASE EVERYTHING POSITIVELY — describe what IS in the frame, not what is absent. The painter ignores negations. Do not write "no doors, just walls" — write "unbroken stone walls with no openings." Do not write "the candelabra is not lit" — write "a candelabra of cold, blackened, burned-out wicks." Anything you can only express as an absence belongs in "negative_visual" (below), not the image_prompt.
+
+   The image_prompt is the SAME scene you will narrate during play. Whatever you tell the player about this place — abandoned, doorless, unlit, flooded — must already be true in the image_prompt. The two must never contradict each other.
+
+   Also write "negative_visual": a short comma-separated list of things that must NOT appear, to fight the painter's defaults. These are the model's habitual additions that contradict your scene — e.g. for an abandoned mansion corridor: "fire, flames, lit candles, glowing embers, warm lighting, doors, people". Omit or leave "" if nothing needs excluding. This feeds the image generator's negative-prompt channel, which is far more reliable than negations buried in prose.
+
    List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
 2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location, premise, AND TIME OF DAY. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present at this specific time.
@@ -138,6 +146,7 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
       "name": "Vesper's Office",
       "summary": "A cramped second-floor office above Cooper Lane...",
       "image_prompt": "Rich painterly description of the scene for the image generator...",
+      "negative_visual": "sunlight, daytime, crowds",
       "present_npc_ids": [],
       "discovered_features": ["worn wooden desk", "rain-streaked window", "case file open under a banker's lamp"]
     }
@@ -257,14 +266,18 @@ STATE CHANGES — field details:
   CRITICAL — description must be a rich visual portrait (2–4 sentences): gender, approximate age, ethnicity/skin tone, hair, build, face, clothing. This is the source of truth for both the portrait painter and the room image — be specific enough that both artists paint the same person. If this NPC is already described in the current room's image_prompt or narration, your description here must match exactly.
 
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
-  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "present_npc_ids": [], "discovered_features": [...]}
+  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "negative_visual": "...", "present_npc_ids": [], "discovered_features": [...]}
   The image_prompt is CRITICAL — it becomes the visual ground truth for this location. Write it as a rich, detailed painterly description that an image generator can paint from. Include:
     * The physical space, lighting, mood, and atmosphere — ALL reflecting the current time of day (check "Current time" in the world state)
+    * The current PHYSICAL STATE of the place, made explicit — abandoned means cold, dark, unlit, dusty, no fire or glow; spell out consequences the painter would not infer
     * Who is actually present at this place given the time — an empty bar at 9 AM, a packed one at midnight
     * Specific props and objects the player might examine or interact with
     * Environmental storytelling — clues, evidence, or details that hint at the plot (a half-open drawer, a stain on the floor, a photograph turned face-down)
     * Any NPCs present and what they're doing
     * Details consistent with the game's tone and visual style
+  PHRASE EVERYTHING POSITIVELY — describe what IS present, never what is absent (the painter ignores "no"/"without"). "Unbroken walls with no openings," not "no doors." Put pure absences in "negative_visual" instead.
+  The image_prompt must AGREE with how you narrate this place to the player — abandoned, doorless, unlit, whatever you say in prose must already be written into the image_prompt.
+  "negative_visual": a short comma-separated list of things that must NOT appear, to override the painter's defaults (e.g. for an abandoned corridor: "fire, flames, lit candles, warm light, doors, people"). Omit or "" if nothing needs excluding.
   Everything you put in the image_prompt will be painted and shown to the player. Everything you leave out will be invisible. Be generous with detail — the player will scrutinize every inch of the scene.
 
 - "image_dirty": list of objects describing locations whose appearance has changed enough to warrant a new image. Usually empty. Each entry:

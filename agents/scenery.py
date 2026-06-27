@@ -131,11 +131,18 @@ class SceneryAgent(BaseAgent):
                     scene=scene,
                     context=scenery_ctx,
                 )
+                # Combine the global UI-chrome exclusions with any per-location
+                # negative the DM wrote (e.g. "fire, flames, doors") to push back
+                # on model priors that contradict the scene's actual state.
+                negative = SCENERY_NEGATIVE_PROMPT
+                loc_negative = (location_def.get("negative_visual") or "").strip()
+                if loc_negative:
+                    negative = f"{negative}, {loc_negative}"
                 image_bytes = self._call_image(
                     prompt,
                     aspect_ratio="16:9",
                     context=f"room:{location_id}",
-                    negative_prompt=SCENERY_NEGATIVE_PROMPT,
+                    negative_prompt=negative,
                 )
             if not image_bytes:
                 self._result_queue.put(("error", location_id, "Image model returned nothing"))
