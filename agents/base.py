@@ -188,11 +188,12 @@ class BaseAgent:
         return response.text
 
     def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9",
-                    context="", model=None):
+                    context="", model=None, negative_prompt=None):
         # The chosen model dictates which API path we take — no silent
         # fallbacks. Imagen models use the Imagen image API (which honors
-        # aspect_ratio but takes no reference image); Gemini image models use
-        # generate_content (which accepts reference images for editing).
+        # aspect_ratio and negative_prompt but takes no reference image); Gemini
+        # image models use generate_content (which accepts reference images for
+        # editing but ignores aspect_ratio/negative_prompt).
         # `model` lets a caller override the agent's default per call, e.g. to
         # paint from scratch with Imagen but edit an existing image with Gemini.
         image_model = model or self._model
@@ -200,14 +201,26 @@ class BaseAgent:
         self._log_ai(ts, context, "input", prompt)
 
         if image_model.startswith("imagen"):
-            response = self._client.models.generate_images(
-                model=image_model,
-                prompt=prompt,
-                config=types.GenerateImagesConfig(
-                    number_of_images=1,
-                    aspect_ratio=aspect_ratio,
-                ),
-            )
+            def _imagen(neg):
+                cfg_kwargs = dict(number_of_images=1, aspect_ratio=aspect_ratio)
+                if neg:
+                    cfg_kwargs["negative_prompt"] = neg
+                return self._client.models.generate_images(
+                    model=image_model,
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(**cfg_kwargs),
+                )
+
+            try:
+                response = _imagen(negative_prompt)
+            except Exception as e:
+                # Some Imagen versions (e.g. imagen-4.0) reject negative_prompt.
+                # Degrade gracefully rather than failing the whole image.
+                if negative_prompt and "negative" in str(e).lower():
+                    _log(f"{image_model} rejected negative_prompt; retrying without it")
+                    response = _imagen(None)
+                else:
+                    raise
             self._log_tokens(context, 0, 0, ts=ts)
             if response.generated_images:
                 self._log_ai(ts, context, "output", f"[image generated via {image_model}]")

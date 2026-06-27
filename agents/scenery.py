@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from agents.prompts import SCENERY_TEMPLATE
+from agents.prompts import SCENERY_NEGATIVE_PROMPT, SCENERY_TEMPLATE
 from config import GEMINI_IMAGE_MODEL, SCENERY_MODEL
 
 
@@ -102,7 +102,7 @@ class SceneryAgent(BaseAgent):
                 prompt = (
                     f"Regenerate this scene with one small update. "
                     f"The scene is: {scene}. "
-                    f"Visual style: {visual_style or 'painterly adventure-game art'}. "
+                    f"Visual style: {visual_style or 'painterly illustration'}. "
                     f"Only change: {change}. "
                     f"Everything else — the full wide-angle composition, camera distance, "
                     f"lighting, colour palette, art style, and all other room details — "
@@ -127,11 +127,16 @@ class SceneryAgent(BaseAgent):
                 scenery_ctx = _build_scenery_context(game_context)
                 _log(f"[{location_id}] painting scene from scratch...")
                 prompt = SCENERY_TEMPLATE.format(
-                    visual_style=visual_style or "painterly adventure-game art",
+                    visual_style=visual_style or "painterly illustration",
                     scene=scene,
                     context=scenery_ctx,
                 )
-                image_bytes = self._call_image(prompt, aspect_ratio="16:9", context=f"room:{location_id}")
+                image_bytes = self._call_image(
+                    prompt,
+                    aspect_ratio="16:9",
+                    context=f"room:{location_id}",
+                    negative_prompt=SCENERY_NEGATIVE_PROMPT,
+                )
             if not image_bytes:
                 self._result_queue.put(("error", location_id, "Image model returned nothing"))
                 return

@@ -512,18 +512,29 @@ Output ONLY the JSON, no commentary or markdown fences.
 SCENERY_TEMPLATE = """\
 {visual_style}.
 
-A painted background for a graphical text adventure game. Paint this scene:
+A painterly digital illustration of a single location. Paint this scene:
 
 {scene}
 
 {context}
 
-The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Treat the camera as a fixed three-quarter overhead view typical of point-and-click adventure games.
+The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Compose it as a wide three-quarter view of the whole space, the camera at a fixed elevated angle looking down into the scene.
 
-Every detail in this painting matters — players will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
+Every detail in this painting matters — viewers will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
 
 Render the entire frame with care — every region should be finished painted artwork edge to edge. Do NOT add letterbox bars, vignettes, or framing borders.
 """
+
+# Sent to Imagen as a negative prompt on the from-scratch room paint, to keep
+# the model from reproducing the interface chrome of the game-screenshot images
+# it was trained on (HOG / point-and-click UI: inventory bars, labelled
+# hotspots, corner buttons). Belt-and-suspenders to the prompt wording, which no
+# longer frames the output as a game.
+SCENERY_NEGATIVE_PROMPT = (
+    "user interface, HUD, game UI, inventory bar, toolbar, buttons, menu, "
+    "icons, text labels, captions, signage text, watermark, logo, "
+    "frame border, letterbox bars, vignette"
+)
 
 
 # ===================================================================== #
@@ -531,7 +542,7 @@ Render the entire frame with care — every region should be finished painted ar
 # ===================================================================== #
 
 PORTRAIT_TEMPLATE = (
-    "Paint a character portrait for a graphical text adventure. "
+    "Paint a character portrait. "
     "Head and shoulders, three-quarter view, expressive face. "
     "Background: single flat solid color complementing the character. "
     "NO gradients, NO patterns, NO scenery, NO text or labels. "
@@ -550,8 +561,8 @@ PORTRAIT_TEMPLATE = (
 
 ITEM_SPRITE_TEMPLATE = (
     "{visual_style}. "
-    "Item icon for a graphical text adventure inventory. "
-    "A single object rendered as a clean, detailed icon on a solid dark background. "
+    "A single inventory object icon. "
+    "The object rendered as a clean, detailed icon on a solid dark background. "
     "The object fills most of the frame. Slight three-quarter angle for depth. "
     "NO text, NO labels, NO UI chrome, NO hands or people. "
     "Solid flat dark background (#1a1a1a or similar). "
