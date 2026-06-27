@@ -26,8 +26,8 @@ function showMenu() {
   view = null;
   $("menu").hidden = false;
   $("stage").hidden = true;
-  $("drawer").hidden = true;
-  for (const id of ["btn-save", "btn-load", "btn-inventory"]) $(id).hidden = true;
+  setDrawer(false);
+  for (const id of ["btn-layout", "btn-save", "btn-load", "btn-inventory"]) $(id).hidden = true;
   $("title").textContent = "The Holodeck";
   $("clock").textContent = "";
   loadGameList();
@@ -65,7 +65,7 @@ async function openGame(s) {
 function enterStage(v) {
   $("menu").hidden = true;
   $("stage").hidden = false;
-  for (const id of ["btn-save", "btn-load", "btn-inventory"]) $(id).hidden = false;
+  for (const id of ["btn-layout", "btn-save", "btn-load", "btn-inventory"]) $(id).hidden = false;
   applyView(v);
   $("input").focus();
 }
@@ -216,10 +216,13 @@ function stopPolling() {
 }
 
 // ---------- inventory drawer ----------
-function toggleDrawer() {
-  const d = $("drawer");
-  d.hidden = !d.hidden;
+function setDrawer(open) {
+  $("drawer").hidden = !open;
+  // In columns layout this class adds/removes the inventory grid column;
+  // in scene-top layout it's harmless (the drawer is a fixed overlay).
+  $("stage").classList.toggle("drawer-open", open);
 }
+function toggleDrawer() { setDrawer($("drawer").hidden); }
 
 // ---------- item modal ----------
 function openModal(entry) {
@@ -264,26 +267,57 @@ function flashSystem(text) {
   renderTranscript(view.transcript);
 }
 
-// ---------- resizable scene ----------
+// ---------- layout + resizable divider ----------
+const LAYOUT_KEY = "holodeck_layout";
 const ROOM_H_KEY = "holodeck_room_h";
-let roomH = parseInt(localStorage.getItem(ROOM_H_KEY), 10);
-if (isNaN(roomH)) roomH = Math.round(window.innerHeight * 0.48);
+const TEXT_W_KEY = "holodeck_text_w";
 
-function applyRoomH() {
-  const min = 140;
-  const max = Math.max(min, window.innerHeight - 260); // keep room for transcript + input
-  roomH = Math.max(min, Math.min(max, roomH));
-  $("stage").style.setProperty("--room-h", roomH + "px");
+let layout = localStorage.getItem(LAYOUT_KEY) || "scene-top";
+let roomH = parseInt(localStorage.getItem(ROOM_H_KEY), 10);
+let textW = parseInt(localStorage.getItem(TEXT_W_KEY), 10);
+if (isNaN(roomH)) roomH = Math.round(window.innerHeight * 0.48);
+if (isNaN(textW)) textW = 380;
+
+function isColumns() { return layout === "columns"; }
+
+function applySizes() {
+  const stage = $("stage");
+  const minH = 140, maxH = Math.max(minH, window.innerHeight - 260);
+  roomH = Math.max(minH, Math.min(maxH, roomH));
+  const minW = 220, maxW = Math.max(minW, window.innerWidth - 360);
+  textW = Math.max(minW, Math.min(maxW, textW));
+  stage.style.setProperty("--room-h", roomH + "px");
+  stage.style.setProperty("--text-w", textW + "px");
   localStorage.setItem(ROOM_H_KEY, String(roomH));
+  localStorage.setItem(TEXT_W_KEY, String(textW));
+}
+
+function applyLayout() {
+  const stage = $("stage");
+  stage.classList.toggle("layout-columns", isColumns());
+  stage.classList.toggle("layout-scene-top", !isColumns());
+  $("btn-layout").textContent = isColumns() ? "Layout: Columns" : "Layout: Scene top";
+  localStorage.setItem(LAYOUT_KEY, layout);
+}
+
+function toggleLayout() {
+  layout = isColumns() ? "scene-top" : "columns";
+  applyLayout();
 }
 
 function initResizer() {
-  applyRoomH();
+  applyLayout();
+  applySizes();
   $("room-resizer").addEventListener("mousedown", (e) => {
     e.preventDefault();
-    const startY = e.clientY;
-    const startH = $("room").getBoundingClientRect().height;
-    const onMove = (ev) => { roomH = startH + (ev.clientY - startY); applyRoomH(); };
+    const columns = isColumns();
+    const startX = e.clientX, startY = e.clientY;
+    const startW = textW, startH = roomH;
+    const onMove = (ev) => {
+      if (columns) textW = startW + (ev.clientX - startX);   // drag horizontally
+      else roomH = startH + (ev.clientY - startY);           // drag vertically
+      applySizes();
+    };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
@@ -293,7 +327,7 @@ function initResizer() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   });
-  window.addEventListener("resize", applyRoomH); // re-clamp to the new viewport
+  window.addEventListener("resize", applySizes); // re-clamp to the new viewport
 }
 
 function escapeHtml(s) {
@@ -304,6 +338,7 @@ function escapeHtml(s) {
 // ---------- wiring ----------
 $("btn-new").onclick = newGame;
 $("btn-menu").onclick = showMenu;
+$("btn-layout").onclick = toggleLayout;
 $("btn-save").onclick = doSave;
 $("btn-load").onclick = doLoad;
 $("btn-inventory").onclick = toggleDrawer;

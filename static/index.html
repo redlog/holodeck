@@ -12,6 +12,7 @@
     <span id="clock"></span>
     <span class="spacer"></span>
     <button id="btn-menu" class="ghost">Menu</button>
+    <button id="btn-layout" class="ghost" hidden>Layout: Scene top</button>
     <button id="btn-save" class="ghost" hidden>Save</button>
     <button id="btn-load" class="ghost" hidden>Load</button>
     <button id="btn-inventory" class="ghost" hidden>Bag (<span id="inv-count">0</span>)</button>
@@ -49,13 +50,14 @@
       <input id="input" type="text" autocomplete="off"
              placeholder="What do you do?" disabled>
     </form>
-  </section>
 
-  <!-- Inventory drawer -->
-  <aside id="drawer" hidden>
-    <h3>Inventory</h3>
-    <ul id="drawer-list"></ul>
-  </aside>
+    <!-- Inventory: a fixed overlay in "scene top" layout, a real column in
+         "columns" layout (see #stage.layout-columns #drawer in style.css). -->
+    <aside id="drawer" hidden>
+      <h3>Inventory</h3>
+      <ul id="drawer-list"></ul>
+    </aside>
+  </section>
 
   <!-- Item modal -->
   <div id="modal" hidden>

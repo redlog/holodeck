@@ -74,8 +74,16 @@ button[hidden] { display: none; }
 
 /* ---------- stage: room / sidebar / transcript / input ---------- */
 #stage {
-  --room-h: 48vh;
+  --room-h: 48vh;   /* scene height in "scene top" layout */
+  --text-w: 380px;  /* text-column width in "columns" layout */
   display: grid;
+  gap: 0;
+  height: calc(100vh - 49px);
+  padding: 0;
+}
+
+/* ---- Layout A: scene on top (default) ---- */
+#stage.layout-scene-top {
   grid-template-columns: 168px 1fr;
   grid-template-rows: var(--room-h) 8px minmax(0, 1fr) auto;
   grid-template-areas:
@@ -83,10 +91,29 @@ button[hidden] { display: none; }
     "resizer resizer"
     "sidebar transcript"
     "input input";
-  gap: 0;
-  height: calc(100vh - 49px);
-  padding: 0;
 }
+#stage.layout-scene-top.no-room { grid-template-rows: 0 0 minmax(0, 1fr) auto; }
+#stage.layout-scene-top #room-resizer { cursor: row-resize; }
+
+/* ---- Layout B: text | scene | (inventory) ---- */
+#stage.layout-columns {
+  grid-template-columns: var(--text-w) 8px 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "sidebar    resizer room"
+    "transcript resizer room"
+    "input      resizer room";
+}
+#stage.layout-columns.drawer-open {
+  grid-template-columns: var(--text-w) 8px 1fr 260px;
+  grid-template-areas:
+    "sidebar    resizer room drawer"
+    "transcript resizer room drawer"
+    "input      resizer room drawer";
+}
+#stage.layout-columns.no-room { grid-template-columns: 1fr 0 0; }
+#stage.layout-columns.no-room.drawer-open { grid-template-columns: 1fr 0 0 260px; }
+#stage.layout-columns #room-resizer { cursor: col-resize; }
 
 #room {
   grid-area: room;
@@ -101,18 +128,18 @@ button[hidden] { display: none; }
 }
 #room-placeholder { z-index: 1; }
 
-/* Draggable divider between the scene and the text area. */
+/* Draggable divider between the scene and the text (row- or col-resize per
+   layout, set above). */
 #room-resizer {
   grid-area: resizer;
-  cursor: row-resize;
   background: var(--divider);
-  border-top: 1px solid var(--bg);
-  border-bottom: 1px solid var(--bg);
+  border: solid var(--bg);
+  border-width: 1px 0;
 }
+#stage.layout-columns #room-resizer { border-width: 0 1px; }
 #room-resizer:hover { background: var(--portrait-border); }
 
 /* Interview/creating phase has no scene — collapse the room + resizer. */
-#stage.no-room { grid-template-rows: 0 0 minmax(0, 1fr) auto; }
 #stage.no-room #room,
 #stage.no-room #room-resizer { display: none; }
 
@@ -177,6 +204,7 @@ button[hidden] { display: none; }
 #input:disabled { opacity: 0.5; }
 
 /* ---------- inventory drawer ---------- */
+/* Default (scene-top layout): a fixed overlay sliding in from the right. */
 #drawer {
   position: fixed;
   top: 49px;
@@ -187,6 +215,13 @@ button[hidden] { display: none; }
   border-left: 1px solid var(--divider);
   padding: 12px;
   overflow-y: auto;
+}
+/* Columns layout: the drawer is a real grid column, not an overlay. */
+#stage.layout-columns #drawer {
+  position: static;
+  grid-area: drawer;
+  width: auto;
+  height: auto;
 }
 #drawer h3 { margin-top: 0; color: var(--dm); }
 #drawer-list { list-style: none; padding: 0; margin: 0; }
