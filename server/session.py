@@ -59,6 +59,13 @@ class GameSession:
         self._started = started       # whether the first DM beat has run
         self._lock = threading.Lock()
 
+        # Per-game style-anchor image, shared as a reference by every portrait
+        # and room paint so the whole game holds one art style. Lazily produced
+        # on first imagery trigger (blocking once), then cached; loaded from
+        # disk on resume. None means "couldn't make it" → un-anchored fallback.
+        self._style_ref = None
+        self._style_ref_loaded = False
+
     @property
     def speaker_id(self):
         return self._speaker_id
@@ -169,7 +176,8 @@ class GameSession:
                 # Paint the NPC's portrait on first conversation if absent.
                 if not _file_exists(npc.get("portrait_path")):
                     style = self.world_state.get("meta", {}).get("visual_style", "")
-                    self.portraits.generate_portrait(speaker, npc, style)
+                    self.portraits.generate_portrait(speaker, npc, style,
+                                                     style_ref=self._style_anchor())
         else:
             self._speaker_id = "player"
 
@@ -228,16 +236,35 @@ class GameSession:
 
         player = ws.get("player", {})
         if player.get("description") and not _file_exists(player.get("portrait_path")):
-            self.portraits.generate_portrait("player", player, style)
+            self.portraits.generate_portrait("player", player, style,
+                                             style_ref=self._style_anchor())
         for npc_id, npc in ws.get("npcs", {}).items():
             if npc.get("description") and not _file_exists(npc.get("portrait_path")):
-                self.portraits.generate_portrait(npc_id, npc, style)
+                self.portraits.generate_portrait(npc_id, npc, style,
+                                                 style_ref=self._style_anchor())
 
         for entry in player.get("inventory", []):
             if isinstance(entry, dict):
                 item_id = entry.get("item_id")
                 if item_id and not _file_exists(entry.get("sprite_path")):
                     self.items.generate_sprite(item_id, entry, style)
+
+    def _style_anchor(self):
+        """Lazily produce + cache the per-game style-reference image bytes.
+
+        Blocking on first call (one image generation); cheap on resume (read
+        from disk). Returns None if it can't be produced, in which case imagery
+        falls back to the un-anchored paths.
+        """
+        if self._style_ref_loaded:
+            return self._style_ref
+        self._style_ref_loaded = True
+        style = self.world_state.get("meta", {}).get("visual_style", "")
+        self._style_ref = self.scenery.ensure_style_anchor(style)
+        if self._style_ref:
+            self.world_state.setdefault("meta", {})["style_ref_path"] = str(
+                self.scenery.style_anchor_path())
+        return self._style_ref
 
     def _trigger_room_render(self, loc_id, change=None):
         if not loc_id:
@@ -247,7 +274,8 @@ class GameSession:
             return
         style = self.world_state.get("meta", {}).get("visual_style", "")
         ctx = self._build_scenery_context(loc)
-        self.scenery.generate_room(loc_id, loc, style, game_context=ctx, change=change)
+        self.scenery.generate_room(loc_id, loc, style, game_context=ctx,
+                                   change=change, style_ref=self._style_anchor())
         _log(f"Triggered room render for: {loc_id}")
 
     def _trigger_item_sprite(self, item_entry):

@@ -13,7 +13,13 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from agents.prompts import SCENERY_NEGATIVE_PROMPT, SCENERY_TEMPLATE
+from agents.imageutil import crop_to_aspect, to_png_bytes
+from agents.prompts import (
+    SCENERY_NEGATIVE_PROMPT,
+    SCENERY_TEMPLATE,
+    STYLE_ANCHOR_TEMPLATE,
+    STYLE_REF_DIRECTIVE,
+)
 from config import GEMINI_IMAGE_MODEL, SCENERY_MODEL
 
 
@@ -77,6 +83,8 @@ class SceneryAgent(BaseAgent):
     MAX_PAINT_ATTEMPTS = 3
     RETRY_BACKOFF_SECONDS = 2
 
+    ANCHOR_FILENAME = "style_ref.png"
+
     def __init__(self, cache_dir):
         super().__init__(model=SCENERY_MODEL, temperature=0.7, game_dir=cache_dir)
         self._cache_dir = Path(cache_dir)
@@ -86,17 +94,66 @@ class SceneryAgent(BaseAgent):
     def pending(self):
         return bool(self._pending)
 
+    # ------------------------------------------------------------------ #
+    # Style anchor — one canonical reference image per game
+    # ------------------------------------------------------------------ #
+
+    def style_anchor_path(self):
+        return self._cache_dir / self.ANCHOR_FILENAME
+
+    def ensure_style_anchor(self, visual_style):
+        """Synchronously ensure the per-game style-anchor image exists.
+
+        Returns its PNG bytes (to be passed as a reference into every portrait
+        and room paint), or None if it could not be produced — in which case
+        callers fall back to the un-anchored paths and behave as before.
+
+        Painted on the Gemini image model so that referencing it later
+        faithfully reproduces the same style. Cached on disk; cheap on resume.
+        """
+        path = self.style_anchor_path()
+        if path.is_file():
+            try:
+                return path.read_bytes()
+            except OSError:
+                pass
+
+        prompt = STYLE_ANCHOR_TEMPLATE.format(
+            visual_style=visual_style or "painterly illustration")
+        _log("painting per-game style anchor...")
+        try:
+            anchor_bytes = self._call_image(
+                prompt, aspect_ratio="16:9",
+                context="style_anchor", model=GEMINI_IMAGE_MODEL)
+        except Exception as e:
+            _log(f"style anchor generation failed: {e}")
+            return None
+        if not anchor_bytes:
+            _log("style anchor: image model returned nothing")
+            return None
+
+        try:
+            img = Image.open(io.BytesIO(anchor_bytes)).convert("RGB")
+            img = crop_to_aspect(img, 16, 9)
+            anchor_bytes = to_png_bytes(img)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(anchor_bytes)
+            _log(f"style anchor saved -> {path}")
+        except Exception as e:
+            _log(f"style anchor save failed (using in-memory bytes): {e}")
+        return anchor_bytes
+
     def generate_room(self, location_id, location_def, visual_style,
-                      game_context=None, change=None):
+                      game_context=None, change=None, style_ref=None):
         if location_id in self._pending:
             return
         self._pending[location_id] = True
         _log(f"Starting room paint for '{location_id}'")
         self._run_threaded(self._pipeline, location_id, location_def,
-                           visual_style, game_context, change)
+                           visual_style, game_context, change, style_ref)
 
     def _pipeline(self, location_id, location_def, visual_style,
-                  game_context=None, change=None):
+                  game_context=None, change=None, style_ref=None):
         try:
             existing_path = location_def.get("image_path")
             existing_bytes = None
@@ -150,12 +207,33 @@ class SceneryAgent(BaseAgent):
                 loc_negative = (location_def.get("negative_visual") or "").strip()
                 if loc_negative:
                     negative = f"{negative}, {loc_negative}"
-                paint = lambda: self._call_image(
-                    prompt,
-                    aspect_ratio="16:9",
-                    context=f"room:{location_id}",
-                    negative_prompt=negative,
-                )
+
+                if style_ref:
+                    # Anchored path: paint on the Gemini image model conditioned
+                    # on the per-game style reference, so this room matches every
+                    # portrait and other room. The Gemini path ignores the
+                    # negative-prompt channel, so fold the exclusions into prose;
+                    # it also ignores aspect_ratio, so _save_room crops to 16:9.
+                    anchored_prompt = STYLE_REF_DIRECTIVE + prompt
+                    if negative:
+                        anchored_prompt += (
+                            f"\n\nDo NOT include any of the following in the image: {negative}.")
+                    paint = lambda: self._call_image(
+                        anchored_prompt,
+                        reference_images=[style_ref],
+                        aspect_ratio="16:9",
+                        context=f"room:{location_id}",
+                        model=GEMINI_IMAGE_MODEL,
+                    )
+                else:
+                    # Fallback (no anchor available): original Imagen path, which
+                    # honors native 16:9 and the negative-prompt channel.
+                    paint = lambda: self._call_image(
+                        prompt,
+                        aspect_ratio="16:9",
+                        context=f"room:{location_id}",
+                        negative_prompt=negative,
+                    )
 
             image_bytes = None
             for attempt in range(1, self.MAX_PAINT_ATTEMPTS + 1):
@@ -186,10 +264,17 @@ class SceneryAgent(BaseAgent):
             self._pending.pop(location_id, None)
 
     def _save_room(self, location_id, image_bytes):
-        """Save at native 16:9 dimensions; PlayMode handles crop/fit at render."""
+        """Save normalized to 16:9; the frontend fits it to the scene panel.
+
+        Imagen returns true 16:9 (crop is a no-op), but the Gemini image model —
+        used for the anchored from-scratch path and for delta edits — ignores
+        the aspect request and returns a roughly square frame, so center-crop to
+        16:9 here to keep every room the same shape.
+        """
         path = self._cache_dir / "rooms" / f"{location_id}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = crop_to_aspect(img, 16, 9)
         img.save(path, "PNG")
         return path

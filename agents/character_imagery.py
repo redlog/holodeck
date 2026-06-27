@@ -12,7 +12,8 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from agents.prompts import PORTRAIT_TEMPLATE
+from agents.imageutil import crop_to_aspect
+from agents.prompts import PORTRAIT_TEMPLATE, STYLE_REF_DIRECTIVE
 from config import GEMINI_IMAGE_MODEL
 
 
@@ -33,20 +34,20 @@ class CharacterImageryAgent(BaseAgent):
     def pending(self):
         return bool(self._pending)
 
-    def generate_portrait(self, char_id, char_def, visual_style):
+    def generate_portrait(self, char_id, char_def, visual_style, style_ref=None):
         if char_id in self._pending:
             return
         self._pending[char_id] = True
         _log(f"Starting portrait generation for '{char_id}'")
-        self._run_threaded(self._pipeline, char_id, char_def, visual_style)
+        self._run_threaded(self._pipeline, char_id, char_def, visual_style, style_ref)
 
-    def _pipeline(self, char_id, char_def, visual_style):
+    def _pipeline(self, char_id, char_def, visual_style, style_ref=None):
         try:
             description = char_def.get("description", char_def.get("name", "a character"))
             name = char_def.get("name", char_id)
 
             _log(f"[{char_id}] painting portrait of {name}...")
-            portrait_bytes = self._generate_portrait(name, description, visual_style, char_id)
+            portrait_bytes = self._generate_portrait(name, description, visual_style, char_id, style_ref)
             if not portrait_bytes:
                 self._result_queue.put(("error", char_id, "Failed to generate portrait"))
                 return
@@ -63,19 +64,28 @@ class CharacterImageryAgent(BaseAgent):
         finally:
             self._pending.pop(char_id, None)
 
-    def _generate_portrait(self, name, description, visual_style, char_id=""):
+    def _generate_portrait(self, name, description, visual_style, char_id="", style_ref=None):
         prompt = PORTRAIT_TEMPLATE.format(
             visual_style=visual_style or "painterly adventure-game art",
             name=name,
             description=description,
         )
-        return self._call_image(prompt, aspect_ratio="1:1", context=f"portrait:{char_id}")
+        refs = None
+        if style_ref:
+            prompt = STYLE_REF_DIRECTIVE + prompt
+            refs = [style_ref]
+        return self._call_image(prompt, reference_images=refs, aspect_ratio="1:1",
+                                context=f"portrait:{char_id}")
 
     def _save_portrait(self, char_id, image_bytes):
         path = self._cache_dir / "portraits" / f"{char_id}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
 
         img = Image.open(io.BytesIO(image_bytes))
+        # The Gemini image model ignores the 1:1 request and (especially when
+        # conditioned on a 16:9 style anchor) returns non-square frames; crop to
+        # square first so the resize below doesn't stretch the face.
+        img = crop_to_aspect(img, 1, 1)
         img = img.resize(PORTRAIT_SIZE, Image.LANCZOS)
         img = img.convert("RGB")
         img.save(path, "PNG")

@@ -641,6 +641,37 @@ Output ONLY the JSON, no commentary or markdown fences.
 
 
 # ===================================================================== #
+#  Style anchor — one canonical reference image per game
+# ===================================================================== #
+
+# Painted ONCE per game (on the Gemini image model, which can later take it as a
+# reference). Every portrait and room paint is then conditioned on this image so
+# the whole game shares one art style instead of each asset drifting to its own
+# look (photoreal player, CGI one NPC, flat another). Keep the subject generic —
+# this image's only job is to pin the MEDIUM, not any specific character or place.
+STYLE_ANCHOR_TEMPLATE = (
+    "{visual_style}. "
+    "A single representative illustration that establishes the canonical art style "
+    "for an entire game's artwork: one ordinary person standing in a simple, lightly "
+    "furnished interior, rendered in this exact medium and style. The purpose of this "
+    "image is to define the MEDIUM — the linework, brushwork, shading, level of "
+    "stylization, and color palette — so that every other illustration in the game can "
+    "match it. Fill the frame edge to edge with finished artwork. "
+    "NO text, labels, UI elements, borders, or watermarks."
+)
+
+# Prepended to a portrait/room prompt whenever a style-anchor reference image is
+# supplied. The reference must steer STYLE ONLY — left to itself the model will
+# happily copy the reference's subject and composition.
+STYLE_REF_DIRECTIVE = (
+    "You are given a reference image. Use it ONLY to match the ART STYLE — the medium, "
+    "linework, brushwork, shading, color palette, and overall rendering. Do NOT copy its "
+    "subject, characters, composition, framing, or any of its content. Paint the new "
+    "subject described below from scratch, in that same art style.\n\n"
+)
+
+
+# ===================================================================== #
 #  Scenery — Room background image generation
 # ===================================================================== #
 
