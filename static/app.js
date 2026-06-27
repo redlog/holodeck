@@ -95,7 +95,7 @@ function applyView(v) {
     ph.textContent = v.pending ? "Painting the scene…"
       : inPlay ? "(no scene image)" : "";
   }
-  room.style.display = inPlay ? "flex" : "none";
+  $("stage").classList.toggle("no-room", !inPlay);
 
   // Portrait + speaker
   const portrait = $("portrait");
@@ -264,6 +264,38 @@ function flashSystem(text) {
   renderTranscript(view.transcript);
 }
 
+// ---------- resizable scene ----------
+const ROOM_H_KEY = "holodeck_room_h";
+let roomH = parseInt(localStorage.getItem(ROOM_H_KEY), 10);
+if (isNaN(roomH)) roomH = Math.round(window.innerHeight * 0.48);
+
+function applyRoomH() {
+  const min = 140;
+  const max = Math.max(min, window.innerHeight - 260); // keep room for transcript + input
+  roomH = Math.max(min, Math.min(max, roomH));
+  $("stage").style.setProperty("--room-h", roomH + "px");
+  localStorage.setItem(ROOM_H_KEY, String(roomH));
+}
+
+function initResizer() {
+  applyRoomH();
+  $("room-resizer").addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = $("room").getBoundingClientRect().height;
+    const onMove = (ev) => { roomH = startH + (ev.clientY - startY); applyRoomH(); };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  window.addEventListener("resize", applyRoomH); // re-clamp to the new viewport
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -286,4 +318,5 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("modal").hidden) closeModal();
 });
 
+initResizer();
 showMenu();
