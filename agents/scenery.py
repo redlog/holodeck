@@ -13,7 +13,7 @@ from PIL import Image
 
 from agents.base import BaseAgent
 from agents.prompts import SCENERY_TEMPLATE
-from config import SCENERY_MODEL
+from config import GEMINI_IMAGE_MODEL, SCENERY_MODEL
 
 
 def _log(msg):
@@ -109,7 +109,17 @@ class SceneryAgent(BaseAgent):
                     f"must remain identical to the reference image. "
                     f"Do not zoom in. Show the complete room."
                 )
-                image_bytes = self._call_image(prompt, reference_images=[existing_bytes], aspect_ratio="16:9", context=f"room:{location_id}")
+                # Edits must go through a Gemini image model: the Imagen API
+                # path ignores reference images, so the agent's default
+                # SCENERY_MODEL (an imagen-* model) would regenerate from the
+                # text prompt alone and lose fidelity to the prior image.
+                image_bytes = self._call_image(
+                    prompt,
+                    reference_images=[existing_bytes],
+                    aspect_ratio="16:9",
+                    context=f"room:{location_id}",
+                    model=GEMINI_IMAGE_MODEL,
+                )
             else:
                 scene = (location_def.get("image_prompt")
                          or location_def.get("summary")

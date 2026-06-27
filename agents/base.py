@@ -187,11 +187,15 @@ class BaseAgent:
         self._log_ai(ts, context, "output", response.text or "")
         return response.text
 
-    def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9", context=""):
-        # The agent's self._model dictates which API path we take — no
-        # silent fallbacks. Imagen models use the Imagen image API (which
-        # honors aspect_ratio); Gemini image models use generate_content.
-        image_model = self._model
+    def _call_image(self, prompt, reference_images=None, aspect_ratio="16:9",
+                    context="", model=None):
+        # The chosen model dictates which API path we take — no silent
+        # fallbacks. Imagen models use the Imagen image API (which honors
+        # aspect_ratio but takes no reference image); Gemini image models use
+        # generate_content (which accepts reference images for editing).
+        # `model` lets a caller override the agent's default per call, e.g. to
+        # paint from scratch with Imagen but edit an existing image with Gemini.
+        image_model = model or self._model
         ts = _now_ts()
         self._log_ai(ts, context, "input", prompt)
 
