@@ -7,6 +7,7 @@ and renders a 960x600 PNG.
 
 import io
 import sys
+import time
 from pathlib import Path
 
 from PIL import Image
@@ -65,6 +66,12 @@ def _build_scenery_context(game_context):
 
 
 class SceneryAgent(BaseAgent):
+    # The image model occasionally returns nothing (a transient server-side
+    # hiccup). Retry a few times in-thread so the room fills in within the
+    # session instead of staying blank until the next reload.
+    MAX_PAINT_ATTEMPTS = 3
+    RETRY_BACKOFF_SECONDS = 2
+
     def __init__(self, cache_dir):
         super().__init__(model=SCENERY_MODEL, temperature=0.7, game_dir=cache_dir)
         self._cache_dir = Path(cache_dir)
@@ -113,7 +120,7 @@ class SceneryAgent(BaseAgent):
                 # path ignores reference images, so the agent's default
                 # SCENERY_MODEL (an imagen-* model) would regenerate from the
                 # text prompt alone and lose fidelity to the prior image.
-                image_bytes = self._call_image(
+                paint = lambda: self._call_image(
                     prompt,
                     reference_images=[existing_bytes],
                     aspect_ratio="16:9",
@@ -138,14 +145,27 @@ class SceneryAgent(BaseAgent):
                 loc_negative = (location_def.get("negative_visual") or "").strip()
                 if loc_negative:
                     negative = f"{negative}, {loc_negative}"
-                image_bytes = self._call_image(
+                paint = lambda: self._call_image(
                     prompt,
                     aspect_ratio="16:9",
                     context=f"room:{location_id}",
                     negative_prompt=negative,
                 )
+
+            image_bytes = None
+            for attempt in range(1, self.MAX_PAINT_ATTEMPTS + 1):
+                image_bytes = paint()
+                if image_bytes:
+                    break
+                if attempt < self.MAX_PAINT_ATTEMPTS:
+                    _log(f"[{location_id}] image model returned nothing "
+                         f"(attempt {attempt}/{self.MAX_PAINT_ATTEMPTS}), retrying...")
+                    time.sleep(self.RETRY_BACKOFF_SECONDS)
+
             if not image_bytes:
-                self._result_queue.put(("error", location_id, "Image model returned nothing"))
+                self._result_queue.put((
+                    "error", location_id,
+                    f"Image model returned nothing after {self.MAX_PAINT_ATTEMPTS} attempts"))
                 return
 
             path = self._save_room(location_id, image_bytes)
