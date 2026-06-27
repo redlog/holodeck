@@ -677,16 +677,21 @@ SCENERY_NEGATIVE_PROMPT = (
 # ===================================================================== #
 
 PORTRAIT_TEMPLATE = (
-    "Paint a character portrait. "
-    "Head and shoulders, three-quarter view, expressive face. "
-    "Background: single flat solid color complementing the character. "
-    "NO gradients, NO patterns, NO scenery, NO text or labels. "
-    "CHARACTER (this description is the absolute authority on this person's appearance — "
-    "gender, age, ethnicity, hair, clothing, and features must match it exactly): "
-    "{name} — {description} "
-    "PHOTOGRAPHIC STYLE (apply only to film grain, color grading, and lighting — "
-    "do NOT derive any appearance traits — hair, facial hair, clothing — from this): "
-    "{visual_style}"
+    "{visual_style}. "
+    "Render this character portrait in EXACTLY that art style. The line above is the "
+    "authority on the MEDIUM and rendering — the linework, shading, color treatment, and "
+    "degree of stylization. Every character portrait in this game must share this one "
+    "consistent style, and it must match the painted room scenes. Do NOT default to a "
+    "photographic, 3D-CGI, or any other look unless the style above explicitly calls for it. "
+    "Head-and-shoulders, three-quarter view, expressive face, looking toward the viewer. "
+    "Render the character upright in a calm, neutral portrait pose — head and shoulders only — "
+    "REGARDLESS of any action, posture, or emotional state mentioned below. Do NOT paint them "
+    "lying down, curled up, crouching, running, or mid-action; this is a still portrait. "
+    "Background: a single flat solid color that complements the character. "
+    "NO gradients, NO patterns, NO scenery, NO props, NO text or labels. "
+    "CHARACTER (this is the authority on WHO is shown — gender, age, ethnicity, hair, build, "
+    "clothing, and facial features must match it exactly; ignore any pose or activity it "
+    "describes): {name} — {description}"
 )
 
 

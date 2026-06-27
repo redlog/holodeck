@@ -43,7 +43,12 @@ def _build_scenery_context(game_context):
             if name:
                 npc_descs.append(f"{name}: {desc}. Currently: {intent}".strip())
         if npc_descs:
-            lines.append("Characters who should be visible in the scene:")
+            n = len(npc_descs)
+            people = "person" if n == 1 else "people"
+            lines.append(
+                f"The scene must contain EXACTLY {n} distinct {people} — no more, no fewer. "
+                f"Paint all {n} of them, each one clearly visible and recognizable:"
+            )
             lines.extend(f"  - {d}" for d in npc_descs)
 
     # Visual clues from secrets — things the observant player should notice
