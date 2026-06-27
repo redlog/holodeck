@@ -38,7 +38,9 @@ from agents.base import BaseAgent
 from agents.npc import NPCAgent
 from agents.prompts import (
     INTERVIEW_SYSTEM, INTERVIEW_OPENING_DIRECTIVE,
-    CREATION_SYSTEM, PLAY_SYSTEM, OPENING_SCENE_DIRECTIVE, RESUMED_SCENE_DIRECTIVE,
+    CREATION_SYSTEM, CLOSED_WORLD_CREATION_ADDENDUM,
+    PLAY_SYSTEM, CLOSED_WORLD_PLAY_ADDENDUM,
+    OPENING_SCENE_DIRECTIVE, RESUMED_SCENE_DIRECTIVE,
     DM_NPC_DISPATCH,
 )
 from config import GEMINI_DM_MODEL
@@ -79,6 +81,19 @@ class DungeonMaster(BaseAgent):
             self.phase = self.PHASE_CREATING
         else:
             self.phase = self.PHASE_INTERVIEW
+
+    def _is_closed_world(self):
+        return self.world_state.get("meta", {}).get("world_mode") == "closed"
+
+    def _creation_system(self):
+        if self._is_closed_world():
+            return CREATION_SYSTEM + CLOSED_WORLD_CREATION_ADDENDUM
+        return CREATION_SYSTEM
+
+    def _play_system(self):
+        if self._is_closed_world():
+            return PLAY_SYSTEM + CLOSED_WORLD_PLAY_ADDENDUM
+        return PLAY_SYSTEM
 
     def get_play_history(self):
         """Return the play-phase conversation history (for save)."""
@@ -238,7 +253,7 @@ class DungeonMaster(BaseAgent):
                 "Now do your hidden prep and emit the JSON described in the system prompt."
             )
 
-            raw = self._call_text(CREATION_SYSTEM, [
+            raw = self._call_text(self._creation_system(), [
                 {"role": "user", "parts": [{"text": user_msg}]}
             ], context="author")
             parsed = json.loads(_strip_json_fences(raw))
@@ -272,6 +287,7 @@ class DungeonMaster(BaseAgent):
             loc_def.setdefault("present_npc_ids", [])
             loc_def.setdefault("discovered_features", [])
             loc_def.setdefault("events_log_summary", "")
+            loc_def.setdefault("exits", [])  # closed-world adjacency; empty in open mode
             loc_def["id"] = loc_id
             ws["locations"][loc_id] = loc_def
 
@@ -307,6 +323,11 @@ class DungeonMaster(BaseAgent):
             ws_bible["planned_beats"] = bible["planned_beats"]
         if "scratchpad" in bible:
             ws_bible["scratchpad"] = bible["scratchpad"]
+
+        # Win condition (closed-world): may arrive top-level or inside the bible.
+        win = parsed.get("win_condition") or bible.get("win_condition")
+        if win:
+            ws_bible["win_condition"] = win
 
         # Plot threads
         threads = parsed.get("plot_threads") or []
@@ -353,7 +374,7 @@ class DungeonMaster(BaseAgent):
             cache = self._client.caches.create(
                 model=self._model,
                 config=types.CreateCachedContentConfig(
-                    system_instruction=PLAY_SYSTEM,
+                    system_instruction=self._play_system(),
                     ttl="14400s",  # 4 hours
                 ),
             )
@@ -387,7 +408,7 @@ class DungeonMaster(BaseAgent):
             loc_id = self.world_state.get("current_location_id", "")
             loc_name = self.world_state.get("locations", {}).get(loc_id, {}).get("name", loc_id) or "unknown"
             cache = self._ensure_play_cache()
-            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=loc_name,
+            raw = self._call_text(self._play_system(), self._play_history, context=loc_name,
                                   cached_content=cache.name if cache else None)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
@@ -516,7 +537,7 @@ class DungeonMaster(BaseAgent):
 
         try:
             cache = self._ensure_play_cache()
-            raw = self._call_text(PLAY_SYSTEM, self._play_history, context=npc_name,
+            raw = self._call_text(self._play_system(), self._play_history, context=npc_name,
                                   cached_content=cache.name if cache else None)
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
@@ -630,13 +651,24 @@ class DungeonMaster(BaseAgent):
 
         # Current location
         image_prompt = loc.get("image_prompt", "")
-        sections.append(
+        loc_section = (
             f"CURRENT LOCATION: {loc.get('name', loc_id or '(unknown)')}\n"
             f"Summary: {loc.get('summary', '')}\n"
             f"Scene image (what the player sees painted on screen): {image_prompt}\n"
             f"Discovered features: {', '.join(loc.get('discovered_features', []) or ['(none)'])}\n"
             f"Events here: {loc.get('events_log_summary', '') or '(none yet)'}"
         )
+        # Closed world: the player may only move along these authored exits.
+        if self._is_closed_world():
+            exit_pairs = []
+            for ex in loc.get("exits", []) or []:
+                ex_name = ws.get("locations", {}).get(ex, {}).get("name", ex)
+                exit_pairs.append(f"{ex_name} (id: {ex})")
+            loc_section += (
+                "\nExits (the ONLY places reachable from here): "
+                + (", ".join(exit_pairs) if exit_pairs else "(none — this is a dead end)")
+            )
+        sections.append(loc_section)
 
         # Present NPCs
         if present_npcs:
@@ -731,6 +763,9 @@ class DungeonMaster(BaseAgent):
 
         # DM bible (hidden from player, visible to DM)
         bible = ws.get("dm_bible", {})
+        win_condition = bible.get("win_condition", "")
+        if win_condition:
+            sections.append(f"WIN CONDITION (how the game is won — hidden from player):\n  {win_condition}")
         secrets = bible.get("secrets", [])
         if secrets:
             secret_lines = [

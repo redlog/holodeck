@@ -326,6 +326,7 @@ def new_game():
             "last_saved": None,
             "tone": "",
             "visual_style": "",
+            "world_mode": "open",  # "open" (improvised) or "closed" (pre-authored)
         },
         "dm_instructions": {
             "premise": "",
@@ -350,5 +351,6 @@ def new_game():
             "secrets": [],
             "planned_beats": [],
             "scratchpad": "",
+            "win_condition": "",  # closed-world only: how the game is won
         },
     }
