@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Holodeck</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar">
+    <span id="title">The Holodeck</span>
+    <span id="clock"></span>
+    <span class="spacer"></span>
+    <button id="btn-menu" class="ghost">Menu</button>
+    <button id="btn-save" class="ghost" hidden>Save</button>
+    <button id="btn-load" class="ghost" hidden>Load</button>
+    <button id="btn-inventory" class="ghost" hidden>Bag (<span id="inv-count">0</span>)</button>
+  </header>
+
+  <!-- Main menu -->
+  <section id="menu" class="screen">
+    <h1>The Holodeck</h1>
+    <p class="muted">A graphical text adventure run by an AI dungeon master.</p>
+    <button id="btn-new" class="primary">New Adventure</button>
+    <h2>Continue</h2>
+    <ul id="game-list"></ul>
+  </section>
+
+  <!-- Setup / interview + play share the same stage -->
+  <section id="stage" class="screen" hidden>
+    <div id="room">
+      <div id="room-placeholder" class="muted">(no scene image)</div>
+    </div>
+
+    <aside id="sidebar">
+      <div id="portrait-box">
+        <div id="portrait-placeholder" class="muted">(portrait)</div>
+        <img id="portrait" alt="" hidden>
+      </div>
+      <div id="speaker-name"></div>
+      <div id="setup-status" hidden></div>
+    </aside>
+
+    <div id="transcript"></div>
+
+    <form id="input-form">
+      <span class="prompt">&gt;</span>
+      <input id="input" type="text" autocomplete="off"
+             placeholder="What do you do?" disabled>
+    </form>
+  </section>
+
+  <!-- Inventory drawer -->
+  <aside id="drawer" hidden>
+    <h3>Inventory</h3>
+    <ul id="drawer-list"></ul>
+  </aside>
+
+  <!-- Item modal -->
+  <div id="modal" hidden>
+    <div id="modal-panel">
+      <img id="modal-img" alt="" hidden>
+      <div id="modal-noimg" class="muted" hidden>(no image)</div>
+      <h3 id="modal-name"></h3>
+      <p id="modal-prov" class="muted"></p>
+      <p class="hint">Click anywhere or press Esc to close</p>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

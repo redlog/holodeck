@@ -3,18 +3,6 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
-# Display
-INTERNAL_WIDTH = 1280
-INTERNAL_HEIGHT = 800
-DISPLAY_SCALE = 1
-
-# UI
-FONT_SIZE = 16
-FONT_PATH = None  # Set to a .ttf path for custom pixel font
-
-# Gameplay
-AUTOSAVE_ON_RESPONSE = True
-
 # Gemini models — all must be defined in .env
 _REQUIRED_MODELS = [
     "GEMINI_API_KEY",

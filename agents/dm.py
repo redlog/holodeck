@@ -1,8 +1,6 @@
-"""DungeonMaster: the single agent that runs both the setup conversation
-and (eventually) play-mode turns.
+"""DungeonMaster: the single agent that runs the whole session.
 
-The same agent persona carries through the whole session. It currently
-operates in two phases:
+The same agent persona carries through three phases:
 
   PHASE_INTERVIEW — the setup conversation. Gathers genre, tone, visual
                     style, player character, premise, starting situation.
@@ -15,8 +13,15 @@ operates in two phases:
                     No player interaction during this phase.
 
   PHASE_PLAY      — turn-based narration. Receives free-text player input,
-                    parses intent, narrates, and emits state diffs.
-                    *** Not yet implemented; see design/text_adventure_design.md ***
+                    parses intent, narrates, and emits state diffs that
+                    _apply_play_changes applies to world_state.
+
+The public methods (start_interview, send_message, start_creation,
+narrate_opening) are SYNCHRONOUS — they return the parsed result dict
+directly. They are meant to be called from a worker thread or a threadpool
+(FastAPI runs request handlers in one); GameSession serializes turns per
+game. Image generation is the only thing that stays asynchronous, and that
+lives in the imagery agents, not here.
 
 The interview prompt and scrubbing logic are the surviving heart of months
 of iteration; preserve their constraint structure when expanding.
@@ -103,15 +108,12 @@ class DungeonMaster(BaseAgent):
     # ------------------------------------------------------------------ #
 
     def start_interview(self):
-        """Proactively post an opening greeting + first interview question."""
+        """Synchronous. Return the opening greeting + first interview question."""
         if self.phase != self.PHASE_INTERVIEW:
-            return
+            return None
         if not self.connected:
-            self._result_queue.put({
-                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
-            })
-            return
-        self._run_threaded(self._send_opening)
+            return {"response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart."}
+        return self._send_opening()
 
     def _send_opening(self):
         try:
@@ -121,33 +123,28 @@ class DungeonMaster(BaseAgent):
             self._history.append({"role": "model", "parts": [{"text": raw}]})
             parsed = json.loads(_strip_json_fences(raw))
             self._scrub_interview_response(parsed)
-            self._result_queue.put(parsed)
+            return parsed
         except Exception as e:
             _log(f"Opening greeting error: {e}")
-            self._result_queue.put({
+            return {
                 "response_text": "Welcome to the Holodeck. I'll help you build your game. To start, what genre or setting do you have in mind?",
-            })
+            }
 
     def send_message(self, user_text):
-        """Player text input. Dispatched to whichever phase we're in."""
+        """Synchronous. Player text input, dispatched by phase. Returns the result dict."""
         if not self.connected:
-            self._result_queue.put({
-                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
-            })
-            return
+            return {"response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart."}
         if self.phase == self.PHASE_INTERVIEW:
             _log(f"interview send: {user_text[:80]}")
-            self._run_threaded(self._process_interview, user_text)
+            return self._process_interview(user_text)
         elif self.phase == self.PHASE_CREATING:
             _log("Input received during CREATING phase, ignored")
-            self._result_queue.put({
-                "response_text": "[The DM is preparing the world; please wait.]"
-            })
+            return {"response_text": "[The DM is preparing the world; please wait.]"}
         elif self.phase == self.PHASE_PLAY:
             _log(f"play send: {user_text[:80]}")
-            self._run_threaded(self._process_play_turn, user_text)
+            return self._process_play_turn(user_text)
         else:
-            self._result_queue.put({"response_text": f"[Unknown phase: {self.phase}]"})
+            return {"response_text": f"[Unknown phase: {self.phase}]"}
 
     def _process_interview(self, user_text):
         try:
@@ -169,18 +166,14 @@ class DungeonMaster(BaseAgent):
                 _log("Interview complete — transitioning to creating phase")
                 self.phase = self.PHASE_CREATING
 
-            self._result_queue.put(parsed)
+            return parsed
 
         except json.JSONDecodeError:
             _log("JSON parse error")
-            self._result_queue.put({
-                "response_text": "[DM could not parse response. Please try rephrasing.]"
-            })
+            return {"response_text": "[DM could not parse response. Please try rephrasing.]"}
         except Exception as e:
             _log(f"Error: {e}")
-            self._result_queue.put({
-                "response_text": f"[DM error: {str(e)[:200]}]"
-            })
+            return {"response_text": f"[DM error: {str(e)[:200]}]"}
 
     def _scrub_interview_response(self, parsed):
         """If the LLM tries to create world content during the interview, drop it."""
@@ -208,22 +201,19 @@ class DungeonMaster(BaseAgent):
     # ------------------------------------------------------------------ #
 
     def start_creation(self):
-        """Kick off the one-shot world creation pass.
+        """Synchronous one-shot world creation pass.
 
-        Must be called while phase == PHASE_CREATING. Result lands on the
-        result_queue as {'creation_complete': True, ...} on success or
+        Must be called while phase == PHASE_CREATING. Returns
+        {'creation_complete': True, ...} on success or
         {'creation_complete': False, 'error': '...'} on failure.
         """
         if self.phase != self.PHASE_CREATING:
             _log(f"start_creation called in phase {self.phase}, ignoring")
-            return
+            return {"creation_complete": False, "error": f"wrong phase: {self.phase}"}
         if not self.connected:
-            self._result_queue.put({
-                "creation_complete": False,
-                "error": "DM not connected (GEMINI_API_KEY missing).",
-            })
-            return
-        self._run_threaded(self._run_creation)
+            return {"creation_complete": False,
+                    "error": "DM not connected (GEMINI_API_KEY missing)."}
+        return self._run_creation()
 
     def _run_creation(self):
         try:
@@ -255,20 +245,20 @@ class DungeonMaster(BaseAgent):
             self._apply_creation(parsed)
             self.phase = self.PHASE_PLAY
             _log("Creation complete — transitioning to play phase")
-            self._result_queue.put({
+            return {
                 "creation_complete": True,
                 "starting_location_id": parsed.get("starting_location_id"),
                 "location_count": len(parsed.get("new_locations") or {}),
                 "npc_count": len(parsed.get("new_npcs") or {}),
                 "secret_count": len(parsed.get("dm_bible", {}).get("secrets") or []),
                 "thread_count": len(parsed.get("plot_threads") or []),
-            })
+            }
         except json.JSONDecodeError as e:
             _log(f"Creation JSON parse error: {e}")
-            self._result_queue.put({"creation_complete": False, "error": f"JSON parse: {e}"})
+            return {"creation_complete": False, "error": f"JSON parse: {e}"}
         except Exception as e:
             _log(f"Creation error: {e}")
-            self._result_queue.put({"creation_complete": False, "error": str(e)})
+            return {"creation_complete": False, "error": str(e)}
 
     def _apply_creation(self, parsed):
         ws = self.world_state
@@ -375,15 +365,12 @@ class DungeonMaster(BaseAgent):
         return self._play_cache
 
     def narrate_opening(self):
-        """Fire a DM turn that narrates the opening scene (no player input)."""
+        """Synchronous. Narrate the opening (or resumed) scene with no player input."""
         if self.phase != self.PHASE_PLAY:
-            return
+            return None
         if not self.connected:
-            self._result_queue.put({
-                "response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart.",
-            })
-            return
-        self._run_threaded(self._process_play_turn, None)
+            return {"response_text": "DM not connected. Set GEMINI_API_KEY in .env and restart."}
+        return self._process_play_turn(None)
 
     def _process_play_turn(self, user_text):
         try:
@@ -423,20 +410,20 @@ class DungeonMaster(BaseAgent):
                         self._apply_play_changes(woven)
                         parsed = self._merge_talk_results(parsed, woven, target_npc_id)
 
-            self._result_queue.put(parsed)
+            return parsed
 
         except json.JSONDecodeError:
             _log("Play turn JSON parse error")
-            self._result_queue.put({
+            return {
                 "narration": "[The DM stumbles over their words. Try again.]",
                 "speaker": "dm",
-            })
+            }
         except Exception as e:
             _log(f"Play turn error: {e}\n{traceback.format_exc()}")
-            self._result_queue.put({
+            return {
                 "narration": f"[DM error: {str(e)[:200]}]",
                 "speaker": "dm",
-            })
+            }
 
     def _resolve_talk_target(self, intent):
         """Find the npc_id for a talk intent's target."""
