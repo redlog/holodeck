@@ -362,6 +362,9 @@ class GameSession:
         loc = self.world_state.get("locations", {}).get(loc_id)
         if loc:
             loc["image_path"] = payload.get("image_path")
+            version = payload.get("image_version")
+            if version is not None:
+                loc["image_version"] = version
             loc["image_dirty"] = False
         return True
 

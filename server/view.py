@@ -19,8 +19,9 @@ from world.bible import GAMES_DIR
 
 def media_url(path):
     """Map a generated-image filesystem path to a served URL, with an
-    mtime cache-buster (room images are overwritten in place, so the path
-    alone is not enough to make the browser reload)."""
+    mtime cache-buster. Room re-renders now land on a new versioned path
+    (`<id>.vN.png`), so the URL already changes; the mtime buster stays as
+    belt-and-suspenders for any path that is rewritten in place."""
     if not path:
         return None
     p = Path(path)

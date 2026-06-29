@@ -6,6 +6,7 @@ and renders a 960x600 PNG.
 """
 
 import io
+import re
 import sys
 import time
 from pathlib import Path
@@ -251,11 +252,12 @@ class SceneryAgent(BaseAgent):
                     f"Image model returned nothing after {self.MAX_PAINT_ATTEMPTS} attempts"))
                 return
 
-            path = self._save_room(location_id, image_bytes)
+            path, version = self._save_room(location_id, image_bytes)
             self._result_queue.put(("room_complete", location_id, {
                 "image_path": str(path),
+                "image_version": version,
             }))
-            _log(f"[{location_id}] saved -> {path}")
+            _log(f"[{location_id}] saved v{version} -> {path}")
 
         except Exception as e:
             _log(f"[{location_id}] Pipeline error: {e}")
@@ -270,11 +272,31 @@ class SceneryAgent(BaseAgent):
         used for the anchored from-scratch path and for delta edits — ignores
         the aspect request and returns a roughly square frame, so center-crop to
         16:9 here to keep every room the same shape.
+
+        Each render is written to a new ``<id>.v<N>.png`` rather than overwriting,
+        so prior versions survive for debugging the imagery. Returns the new
+        path and its version number.
         """
-        path = self._cache_dir / "rooms" / f"{location_id}.png"
-        path.parent.mkdir(parents=True, exist_ok=True)
+        rooms_dir = self._cache_dir / "rooms"
+        rooms_dir.mkdir(parents=True, exist_ok=True)
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img = crop_to_aspect(img, 16, 9)
+
+        version = self._next_room_version(rooms_dir, location_id)
+        path = rooms_dir / f"{location_id}.v{version}.png"
         save_png_atomic(img, path)
-        return path
+        return path, version
+
+    @staticmethod
+    def _next_room_version(rooms_dir, location_id):
+        """Next free version for a room, derived from files already on disk so a
+        stale or missing image_version in the save can never clobber an existing
+        render."""
+        pattern = re.compile(rf"^{re.escape(location_id)}\.v(\d+)\.png$")
+        highest = 0
+        for p in rooms_dir.glob(f"{location_id}.v*.png"):
+            m = pattern.match(p.name)
+            if m:
+                highest = max(highest, int(m.group(1)))
+        return highest + 1
