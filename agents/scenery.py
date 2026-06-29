@@ -13,7 +13,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from agents.imageutil import crop_to_aspect, to_png_bytes
+from agents.imageutil import crop_to_aspect, save_png_atomic, to_png_bytes
 from agents.prompts import (
     SCENERY_NEGATIVE_PROMPT,
     SCENERY_TEMPLATE,
@@ -276,5 +276,5 @@ class SceneryAgent(BaseAgent):
 
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img = crop_to_aspect(img, 16, 9)
-        img.save(path, "PNG")
+        save_png_atomic(img, path)
         return path

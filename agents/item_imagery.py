@@ -11,6 +11,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
+from agents.imageutil import save_png_atomic
 from agents.prompts import ITEM_SPRITE_TEMPLATE
 from config import GEMINI_IMAGE_MODEL
 
@@ -80,5 +81,5 @@ class ItemImageryAgent(BaseAgent):
         img = Image.open(io.BytesIO(image_bytes))
         img = img.resize(SPRITE_SIZE, Image.LANCZOS)
         img = img.convert("RGBA")
-        img.save(path, "PNG")
+        save_png_atomic(img, path)
         return path

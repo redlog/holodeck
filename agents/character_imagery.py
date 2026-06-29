@@ -12,7 +12,7 @@ from pathlib import Path
 from PIL import Image
 
 from agents.base import BaseAgent
-from agents.imageutil import crop_to_aspect
+from agents.imageutil import crop_to_aspect, save_png_atomic
 from agents.prompts import PORTRAIT_TEMPLATE, STYLE_REF_DIRECTIVE
 from config import GEMINI_IMAGE_MODEL
 
@@ -88,5 +88,5 @@ class CharacterImageryAgent(BaseAgent):
         img = crop_to_aspect(img, 1, 1)
         img = img.resize(PORTRAIT_SIZE, Image.LANCZOS)
         img = img.convert("RGB")
-        img.save(path, "PNG")
+        save_png_atomic(img, path)
         return path
