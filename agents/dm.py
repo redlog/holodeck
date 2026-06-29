@@ -61,6 +61,18 @@ def _strip_json_fences(text):
     return text.strip()
 
 
+def _thread_id_looks_like_prose(tid):
+    """A real thread id is a short lowercase_snake_case slug. When the model
+    instead drops the summary sentence (or a spaced title) into the id field,
+    it has whitespace or runs long — the signature of the duplicate-thread bug."""
+    return (" " in tid) or (len(tid) > 40)
+
+
+def _slugify_thread_id(tid):
+    slug = re.sub(r"[^a-z0-9]+", "_", tid.lower()).strip("_")
+    return slug[:60]
+
+
 class DungeonMaster(BaseAgent):
     """The DM. Owns the interview, the post-interview creation pass, and
     (next) play turns."""
@@ -807,7 +819,7 @@ class DungeonMaster(BaseAgent):
         ]
         if known_threads:
             thread_lines = [
-                f"  [{t.get('status', '?')}] {t.get('summary', '')}"
+                f"  (id: {t.get('id', '?')}) [{t.get('status', '?')}] {t.get('summary', '')}"
                 for t in known_threads
             ]
             sections.append("ACTIVE PLOT THREADS (player knows):\n" + "\n".join(thread_lines))
@@ -839,7 +851,7 @@ class DungeonMaster(BaseAgent):
         ]
         if hidden_threads:
             thread_lines = [
-                f"  [{t.get('status', '?')}] {t.get('summary', '')}"
+                f"  (id: {t.get('id', '?')}) [{t.get('status', '?')}] {t.get('summary', '')}"
                 for t in hidden_threads
             ]
             sections.append("HIDDEN PLOT THREADS (player doesn't know yet):\n" + "\n".join(thread_lines))
@@ -1013,19 +1025,36 @@ class DungeonMaster(BaseAgent):
                     s["revealed"] = True
                     _log(f"Secret revealed: {secret_id}")
 
-        # Update plot threads
+        # Update plot threads. The applier matches on id, but the model
+        # occasionally supplies a bad id — the summary sentence, or a freshly
+        # invented slug for a thread that already exists — which historically
+        # piled up duplicate threads. Reconcile to an existing thread before
+        # appending, and never persist a prose id.
+        threads = ws.setdefault("plot_threads", [])
         for thread_update in changes.get("update_threads") or []:
-            tid = thread_update.get("id")
+            tid = (thread_update.get("id") or "").strip()
             if not tid:
                 continue
-            found = False
-            for t in ws.get("plot_threads", []):
-                if t.get("id") == tid:
-                    t.update(thread_update)
-                    found = True
-                    break
-            if not found:
-                ws.setdefault("plot_threads", []).append(thread_update)
+            target = next((t for t in threads if t.get("id") == tid), None)
+            if target is None and _thread_id_looks_like_prose(tid):
+                # Salvage a prose id: match it to an existing thread by its
+                # slugified form or by summary text, and normalize what we store.
+                slug = _slugify_thread_id(tid)
+                key = tid.lower()
+                target = next(
+                    (t for t in threads
+                     if t.get("id") == slug
+                     or (t.get("summary", "") or "").strip().lower() == key),
+                    None,
+                )
+                thread_update = {**thread_update, "id": slug}
+                _log(f"normalized prose thread id {tid!r} -> {slug!r}"
+                     + (" (matched existing)" if target else " (new)"))
+            if target is not None:
+                # Keep the canonical id; only apply the other fields.
+                target.update({k: v for k, v in thread_update.items() if k != "id"})
+            else:
+                threads.append(thread_update)
 
         # Bible scratchpad append
         append_text = changes.get("bible_append")

@@ -382,8 +382,14 @@ STATE CHANGES — field details:
 
 - "reveal_secret": list of secret id strings from the DM bible when a secret is revealed to the player through narration or discovery.
 
-- "update_threads": list of objects to update plot threads:
-  [{"id": "brother_murder", "status": "active", "known_to_player": true}]
+- "update_threads": list of objects to update or create plot threads:
+  [{"id": "brother_murder", "status": "resolved", "known_to_player": true}]
+  The "id" MUST be the exact id of an existing thread shown in the state digest
+  (each thread is listed as "(id: ...)") — reuse it verbatim to update that
+  thread; do NOT invent a new id for a thread that already exists, or you will
+  create a duplicate. The id is always a short lowercase_snake_case slug; NEVER
+  put the summary sentence in the id field. To CREATE a genuinely new thread,
+  use a new slug id and include a "summary" plus "status" and "known_to_player".
 
 - "bible_append": optional string to append to the DM bible scratchpad when you make a new private decision or note. Example: "Decided that the warehouse key is hidden in the piano bench."
 
