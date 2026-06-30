@@ -136,8 +136,18 @@ button[hidden] { display: none; }
 #stage.layout-columns.no-room.drawer-open { grid-template-columns: 1fr 0 0 260px; }
 #stage.layout-columns #room-resizer { cursor: col-resize; }
 
-#room {
+/* The scene column owns the "room" grid slot: image on top, info bar below. */
+#scene {
   grid-area: room;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+#room {
+  flex: 1 1 auto;
+  min-height: 0;
   position: relative;
   /* contain (not cover) so the whole 16:9 image is always visible —
      letterboxed against the panel colour rather than cropped. */
@@ -149,21 +159,16 @@ button[hidden] { display: none; }
 }
 #room-placeholder { z-index: 1; }
 
-/* Bottom-of-scene overlay: who's here + visible exits. Sits over the lower
-   edge of the contained image, readable against a soft gradient scrim. */
+/* Who's here + visible exits, in a strip BELOW the image frame (not over it). */
 #scene-info {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
+  flex: 0 0 auto;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 14px 8px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
-  pointer-events: none;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-top: 1px solid var(--divider);
 }
 #scene-npcs {
   display: flex;
@@ -196,8 +201,7 @@ button[hidden] { display: none; }
   line-height: 1.2;
   max-width: 60px;
   text-align: center;
-  color: #eee;
-  text-shadow: 0 1px 2px #000;
+  color: var(--dm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -205,8 +209,7 @@ button[hidden] { display: none; }
 .npc-chip.unknown .npc-cap { color: var(--system); }
 #scene-exits {
   font-size: 12px;
-  color: #eee;
-  text-shadow: 0 1px 2px #000;
+  color: var(--dm);
   text-align: right;
   max-width: 55%;
 }
@@ -226,7 +229,7 @@ button[hidden] { display: none; }
 #room-resizer:hover { background: var(--portrait-border); }
 
 /* Interview/creating phase has no scene — collapse the room + resizer. */
-#stage.no-room #room,
+#stage.no-room #scene,
 #stage.no-room #room-resizer { display: none; }
 
 #sidebar {
