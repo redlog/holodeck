@@ -657,23 +657,32 @@ Output ONLY the JSON, no commentary or markdown fences.
 # Painted ONCE per game (on the Gemini image model, which can later take it as a
 # reference). Every portrait and room paint is then conditioned on this image so
 # the whole game shares one art style instead of each asset drifting to its own
-# look (photoreal player, CGI one NPC, flat another). Keep the subject generic —
-# this image's only job is to pin the MEDIUM, not any specific character or place.
+# look (photoreal player, CGI one NPC, flat another). Its ONLY job is to pin the
+# MEDIUM, so it is deliberately a subject-light material sample sheet, NOT a
+# staged character or scene: a dominant figure or specific props would leak
+# through the reference into every portrait and room. The sample categories are
+# kept generic (a face, cloth, a hard surface, an object, organic texture) so the
+# {visual_style} decides what they actually look like — no genre-specific props
+# are hardcoded here, or they would bleed into every game regardless of setting.
 STYLE_ANCHOR_TEMPLATE = (
     "{visual_style}. "
-    "A single representative illustration that establishes the canonical art style "
-    "for an entire game's artwork: one ordinary person standing in a simple, lightly "
-    "furnished interior, rendered in this exact medium and style. The purpose of this "
-    "image is to define the MEDIUM — the linework or pixels, brushwork, shading, "
-    "resolution, level of stylization, and color palette — so that every other "
-    "illustration in the game can match it. Reproduce the named style FAITHFULLY: if it "
-    "calls for a specific, retro, or low-fidelity medium (pixel art, low-resolution "
-    "16-color EGA/VGA adventure-game art, hand-painted cel animation, ink and "
-    "watercolor, etc.), commit to that medium fully — including its resolution limits, "
-    "palette limits, dithering, and characteristic texture — rather than defaulting to "
-    "a modern photorealistic or 3D-rendered look. Many older game styles are deliberately "
-    "low-resolution and use a small fixed palette; honor that exactly when it is asked for. "
-    "Fill the frame edge to edge with finished artwork. "
+    "A STYLE SAMPLE SHEET that establishes the canonical art style for an entire "
+    "game's artwork. This is NOT a scene and NOT a portrait — it is a few small, "
+    "separate studies arranged on a plain neutral ground, each rendered in the exact "
+    "medium and style named above: a single human face, a patch of cloth or drapery, "
+    "a hard surface (stone, metal, or wood), a small everyday object, and a bit of "
+    "organic texture (foliage, fur, or skin). Keep them as distinct vignettes with "
+    "space between them — do NOT combine them into a unified scene, a room, or a "
+    "standing character. The purpose is to define the MEDIUM — the linework or pixels, "
+    "brushwork, shading, resolution, level of stylization, and color palette — so that "
+    "every other illustration in the game can match it. Reproduce the named style "
+    "FAITHFULLY: if it calls for a specific, retro, or low-fidelity medium (pixel art, "
+    "low-resolution 16-color EGA/VGA adventure-game art, hand-painted cel animation, "
+    "ink and watercolor, etc.), commit to that medium fully — including its resolution "
+    "limits, palette limits, dithering, and characteristic texture — rather than "
+    "defaulting to a modern photorealistic or 3D-rendered look. Many older game styles "
+    "are deliberately low-resolution and use a small fixed palette; honor that exactly "
+    "when it is asked for. Fill the frame edge to edge with finished artwork. "
     "NO text, labels, UI elements, borders, or watermarks."
 )
 
