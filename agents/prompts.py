@@ -203,14 +203,14 @@ The image_prompt is the SAME scene you will narrate during play — whatever you
 Also provide:
 - "negative_visual": a short comma-separated list of things that must NOT appear, to fight the painter's defaults (e.g. for an abandoned corridor: "fire, flames, lit candles, warm light, doors, people"). "" if nothing needs excluding.
 - "discovered_features": a list of things the player notices on entry.
-- "visible_exits": the ways out the player can SEE from inside THIS room, ONE entry per exit in the brief, each described PURELY by its appearance and position in this room and NEVER by where it leads (it is shown on-screen and must not spoil the adjacent room). Each entry {"label": "a heavy oak door in the left wall", "to": "<the matching exit id>"}. GOOD: "a narrow staircase descending in the far corner". BAD (spoils): "stairs down to the cellar".
+- "visible_exits": the ways out the player can SEE from inside THIS room, ONE entry per exit in the brief. Each "label" is a SHORT on-screen tag of 2-5 words: just the feature plus its position, no articles, no full sentences. It describes ONLY appearance and position in this room and NEVER where it leads (it must not spoil the adjacent room). Each entry {"label": "oak door, left wall", "to": "<the matching exit id>"}. GOOD: "staircase, far corner". BAD (too wordy): "a narrow staircase descending in the far corner". BAD (spoils): "stairs to the cellar".
 
 RESPOND WITH JSON IN THIS EXACT SHAPE:
 {
   "image_prompt": "Rich painterly description of the scene...",
   "negative_visual": "sunlight, daytime, crowds",
   "discovered_features": ["worn wooden desk", "rain-streaked window"],
-  "visible_exits": [{"label": "a frosted-glass door onto the landing", "to": "landing"}]
+  "visible_exits": [{"label": "frosted-glass door, right wall", "to": "landing"}]
 }
 
 Output ONLY the JSON, no commentary or markdown fences.
@@ -322,8 +322,8 @@ STATE CHANGES — field details:
   CRITICAL — description must be a rich visual portrait (2–4 sentences): gender, approximate age, ethnicity/skin tone, hair, build, face, clothing. This is the source of truth for both the portrait painter and the room image — be specific enough that both artists paint the same person. If this NPC is already described in the current room's image_prompt or narration, your description here must match exactly.
 
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
-  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "negative_visual": "...", "present_npc_ids": [], "discovered_features": [...], "visible_exits": [{"label": "a gangway up to the moored freighter", "to": "freighter_deck"}]}
-  Include "visible_exits": the ways out the player can see from inside this room, each labelled PURELY by its appearance and position in THIS room and NEVER by where it leads (it is shown on-screen, so it must not spoil the adjacent room). "a rusted door in the north wall", not "door to the evidence room". Set "to" only for exits whose destination location already exists; omit it otherwise.
+  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "negative_visual": "...", "present_npc_ids": [], "discovered_features": [...], "visible_exits": [{"label": "gangway, ahead", "to": "freighter_deck"}]}
+  Include "visible_exits": the ways out the player can see from inside this room. Each "label" is a SHORT on-screen tag of 2-5 words — feature plus position, no articles, no sentences — describing ONLY its appearance and position in THIS room and NEVER where it leads (it is shown on-screen, so it must not spoil the adjacent room). "rusted door, north wall", not "a rusted door in the north wall" and not "door to the evidence room". Set "to" only for exits whose destination location already exists; omit it otherwise.
   The image_prompt is CRITICAL — it becomes the visual ground truth for this location. Write it as a rich, detailed painterly description that an image generator can paint from. Include:
     * The physical space, lighting, mood, and atmosphere — ALL reflecting the current time of day (check "Current time" in the world state)
     * The current PHYSICAL STATE of the place, made explicit — abandoned means cold, dark, unlit, dusty, no fire or glow; spell out consequences the painter would not infer

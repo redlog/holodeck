@@ -215,6 +215,7 @@ button[hidden] { display: none; }
 }
 #scene-exits .exits-label { color: var(--system); }
 #scene-exits .exit-dest { color: var(--dm); }
+#scene-exits .exit-hint { color: var(--system); font-style: italic; }
 #scene-exits .exit-sep { color: var(--system); }
 
 /* Draggable divider between the scene and the text (row- or col-resize per

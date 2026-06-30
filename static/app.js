@@ -190,12 +190,13 @@ function renderSceneInfo(v, inPlay) {
 
   const ebox = $("scene-exits");
   if (exits.length) {
-    const parts = exits.map((e) => {
-      const label = escapeHtml(e.label);
-      return e.destination
-        ? `${label} <span class="exit-dest">→ ${escapeHtml(e.destination)}</span>`
-        : label;
-    });
+    // Once a destination is visited its real name is known, so show that
+    // directly; until then show only the short spoiler-free hint.
+    const parts = exits.map((e) =>
+      e.destination
+        ? `<span class="exit-dest">${escapeHtml(e.destination)}</span>`
+        : `<span class="exit-hint">${escapeHtml(e.label)}</span>`
+    );
     ebox.innerHTML = `<span class="exits-label">Exits:</span> ` +
       parts.join(`<span class="exit-sep"> · </span>`);
     ebox.hidden = false;
