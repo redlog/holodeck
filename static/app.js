@@ -26,6 +26,7 @@ function showMenu() {
   view = null;
   $("menu").hidden = false;
   $("stage").hidden = true;
+  $("topbar").hidden = true;   // menu screen is all you see
   setDrawer(false);
   for (const id of ["btn-layout", "btn-save", "btn-load", "btn-inventory"]) $(id).hidden = true;
   $("title").textContent = "The Holodeck";
@@ -83,6 +84,7 @@ async function openGame(s) {
 function enterStage(v) {
   $("menu").hidden = true;
   $("stage").hidden = false;
+  $("topbar").hidden = false;
   for (const id of ["btn-layout", "btn-save", "btn-load", "btn-inventory"]) $(id).hidden = false;
   applyView(v);
   $("input").focus();

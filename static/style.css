@@ -37,6 +37,9 @@ html, body {
 #title { font-weight: bold; }
 #clock { color: var(--system); font-size: 13px; }
 .spacer { flex: 1; }
+/* display:flex above beats the default [hidden] rule, so override explicitly
+   — the topbar is hidden entirely on the main menu. */
+#topbar[hidden] { display: none; }
 
 button {
   font-family: inherit;
