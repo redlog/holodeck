@@ -31,6 +31,7 @@ import json
 import re
 import sys
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 
 from google.genai import types
 
@@ -38,7 +39,8 @@ from agents.base import BaseAgent
 from agents.npc import NPCAgent
 from agents.prompts import (
     INTERVIEW_SYSTEM, INTERVIEW_OPENING_DIRECTIVE,
-    CREATION_SYSTEM, CLOSED_WORLD_CREATION_ADDENDUM,
+    CREATION_BLUEPRINT_SYSTEM, CLOSED_WORLD_BLUEPRINT_ADDENDUM,
+    LOCATION_DETAIL_SYSTEM, NPC_DETAIL_SYSTEM,
     PLAY_SYSTEM, CLOSED_WORLD_PLAY_ADDENDUM,
     OPENING_SCENE_DIRECTIVE, RESUMED_SCENE_DIRECTIVE,
     DM_NPC_DISPATCH,
@@ -109,10 +111,10 @@ class DungeonMaster(BaseAgent):
     def _is_closed_world(self):
         return self.world_state.get("meta", {}).get("world_mode") == "closed"
 
-    def _creation_system(self):
+    def _blueprint_system(self):
         if self._is_closed_world():
-            return CREATION_SYSTEM + CLOSED_WORLD_CREATION_ADDENDUM
-        return CREATION_SYSTEM
+            return CREATION_BLUEPRINT_SYSTEM + CLOSED_WORLD_BLUEPRINT_ADDENDUM
+        return CREATION_BLUEPRINT_SYSTEM
 
     def _play_system(self):
         if self._is_closed_world():
@@ -141,6 +143,43 @@ class DungeonMaster(BaseAgent):
             and player.get("name")
             and player.get("description")
         )
+
+    # ------------------------------------------------------------------ #
+    # Robust JSON parsing of model replies
+    # ------------------------------------------------------------------ #
+
+    def _repair_json(self, raw, err):
+        """Ask the model to fix its own malformed JSON. Large creation/play
+        blobs occasionally close a bracket wrong or drop a comma in a way strict
+        parsing cannot recover from; one cheap repair round-trip salvages the
+        model's work instead of discarding the whole turn."""
+        stripped = _strip_json_fences(raw)
+        prompt = (
+            "The text below was meant to be a single valid JSON object but has a "
+            f"syntax error: {err}. Fix ONLY the syntax so it parses as JSON. Do "
+            "not add, remove, or reword any content, keys, or values. Return ONLY "
+            "the corrected JSON — no commentary, no markdown fences.\n\n" + stripped
+        )
+        fixed = self._call_text(
+            "You repair malformed JSON. You output only valid JSON, nothing else.",
+            [{"role": "user", "parts": [{"text": prompt}]}],
+            context="json_repair",
+        )
+        return _loads_json(fixed)
+
+    def _loads_or_repair(self, raw, context=""):
+        """Parse model JSON, with one model-driven repair pass on failure.
+        Re-raises the ORIGINAL JSONDecodeError if repair also fails, so the
+        caller's existing per-phase error handler still fires."""
+        try:
+            return _loads_json(raw)
+        except json.JSONDecodeError as e:
+            _log(f"JSON parse failed ({context}): {e} — attempting one repair pass")
+            try:
+                return self._repair_json(raw, e)
+            except Exception as e2:
+                _log(f"JSON repair also failed ({context}): {e2}")
+                raise e
 
     # ------------------------------------------------------------------ #
     # Interview phase
@@ -254,52 +293,253 @@ class DungeonMaster(BaseAgent):
                     "error": "DM not connected (GEMINI_API_KEY missing)."}
         return self._run_creation()
 
+    DETAIL_WORKERS = 5  # parallel detail calls (capped to be gentle on rate limits)
+
     def _run_creation(self):
+        """Author the world in small focused passes instead of one giant JSON.
+
+        1. BLUEPRINT — one compact call: time, bible, threads, inventory, and
+           bare manifests of locations and NPCs (no rich prose).
+        2. DETAIL — one focused call per NPC, then one per location (NPCs first
+           so a room can depict the people in it from their authored looks).
+           These are independent, so they run in parallel.
+        3. ASSEMBLE the pieces into the legacy creation shape and apply it.
+
+        Each call's JSON is small and simple, so a stray bracket can't sink the
+        whole world; a failed detail degrades to a thin asset, not a dead game.
+        """
         try:
-            # Build a fresh context for the creation call. We don't want the
-            # interview history's chatter — just the structured world state.
-            ws = self.world_state
-            meta = ws.get("meta", {})
-            player = ws.get("player", {})
-            dm_inst = ws.get("dm_instructions", {})
+            blueprint = self._author_blueprint()
+        except json.JSONDecodeError as e:
+            _log(f"Blueprint JSON parse error: {e}")
+            return {"creation_complete": False, "error": f"blueprint JSON parse: {e}"}
+        except Exception as e:
+            _log(f"Blueprint error: {e}")
+            return {"creation_complete": False, "error": str(e)}
 
-            user_msg = (
-                "WORLD STATE FROM INTERVIEW:\n\n"
-                f"Title: {meta.get('title', '')}\n"
-                f"Tone: {meta.get('tone', '')}\n"
-                f"Visual style: {meta.get('visual_style', '')}\n\n"
-                f"Player name: {player.get('name', '')}\n"
-                f"Player description: {player.get('description', '')}\n\n"
-                f"Premise:\n{dm_inst.get('premise', '')}\n\n"
-                f"Starting location concept:\n{dm_inst.get('starting_location_concept', '')}\n\n"
-                f"Plot seeds (player-volunteered):\n- " + "\n- ".join(dm_inst.get("plot_seeds", []) or ["(none)"]) + "\n\n"
-                f"Interview summary:\n{dm_inst.get('interview_summary', '')}\n\n"
-                "Now do your hidden prep and emit the JSON described in the system prompt."
-            )
-
-            raw = self._call_text(self._creation_system(), [
-                {"role": "user", "parts": [{"text": user_msg}]}
-            ], context="author")
-            parsed = _loads_json(raw)
+        try:
+            npc_details = self._author_npc_details(blueprint)
+            loc_details = self._author_location_details(blueprint, npc_details)
+            parsed = self._assemble_creation(blueprint, loc_details, npc_details)
             self._apply_creation(parsed)
             if self._is_closed_world():
                 self._validate_closed_world_map()
-            self.phase = self.PHASE_PLAY
-            _log("Creation complete — transitioning to play phase")
-            return {
-                "creation_complete": True,
-                "starting_location_id": parsed.get("starting_location_id"),
-                "location_count": len(parsed.get("new_locations") or {}),
-                "npc_count": len(parsed.get("new_npcs") or {}),
-                "secret_count": len(parsed.get("dm_bible", {}).get("secrets") or []),
-                "thread_count": len(parsed.get("plot_threads") or []),
-            }
-        except json.JSONDecodeError as e:
-            _log(f"Creation JSON parse error: {e}")
-            return {"creation_complete": False, "error": f"JSON parse: {e}"}
         except Exception as e:
-            _log(f"Creation error: {e}")
+            _log(f"Creation assembly error: {e}\n{traceback.format_exc()}")
             return {"creation_complete": False, "error": str(e)}
+
+        self.phase = self.PHASE_PLAY
+        _log("Creation complete — transitioning to play phase")
+        return {
+            "creation_complete": True,
+            "starting_location_id": parsed.get("starting_location_id"),
+            "location_count": len(parsed.get("new_locations") or {}),
+            "npc_count": len(parsed.get("new_npcs") or {}),
+            "secret_count": len(parsed.get("dm_bible", {}).get("secrets") or []),
+            "thread_count": len(parsed.get("plot_threads") or []),
+        }
+
+    def _interview_digest(self):
+        """The interview's structured output, rendered for a creation call."""
+        ws = self.world_state
+        meta = ws.get("meta", {})
+        player = ws.get("player", {})
+        dm_inst = ws.get("dm_instructions", {})
+        return (
+            f"Title: {meta.get('title', '')}\n"
+            f"Tone: {meta.get('tone', '')}\n"
+            f"Visual style: {meta.get('visual_style', '')}\n\n"
+            f"Player name: {player.get('name', '')}\n"
+            f"Player description: {player.get('description', '')}\n\n"
+            f"Premise:\n{dm_inst.get('premise', '')}\n\n"
+            f"Starting location concept:\n{dm_inst.get('starting_location_concept', '')}\n\n"
+            "Plot seeds (player-volunteered):\n- "
+            + "\n- ".join(dm_inst.get("plot_seeds", []) or ["(none)"]) + "\n\n"
+            f"Interview summary:\n{dm_inst.get('interview_summary', '')}"
+        )
+
+    def _author_blueprint(self):
+        user_msg = (
+            "WORLD STATE FROM INTERVIEW:\n\n"
+            + self._interview_digest()
+            + "\n\nNow do your hidden prep and emit the BLUEPRINT JSON described "
+              "in the system prompt."
+        )
+        return self._author_json(self._blueprint_system(), user_msg, "blueprint", attempts=3)
+
+    def _blueprint_context(self, blueprint):
+        """Shared read-only context handed to every detail call so the pieces
+        stay coherent with the blueprint and with each other."""
+        meta = self.world_state.get("meta", {})
+        bible = blueprint.get("dm_bible", {}) or {}
+        loc_lines = [
+            f"  - {l.get('id')}: {l.get('name','')} — {l.get('summary','')}"
+            for l in blueprint.get("locations", []) or []
+        ]
+        npc_lines = [
+            f"  - {n.get('name','')} (at {n.get('location_id','?')}): {n.get('role','')}"
+            for n in blueprint.get("npcs", []) or []
+        ]
+        secrets = "\n".join(f"  - {s.get('fact','')}" for s in bible.get("secrets", []) or [])
+        beats = "\n".join(f"  - {b}" for b in bible.get("planned_beats", []) or [])
+        return (
+            f"GAME: {meta.get('title','')}\n"
+            f"Tone: {meta.get('tone','')}\n"
+            f"Visual style: {meta.get('visual_style','')}\n"
+            f"Current time: {blueprint.get('narrative_clock','')}\n\n"
+            f"PREMISE:\n{self.world_state.get('dm_instructions',{}).get('premise','')}\n\n"
+            "ALL LOCATIONS:\n" + ("\n".join(loc_lines) or "  (none)") + "\n\n"
+            "ALL CHARACTERS:\n" + ("\n".join(npc_lines) or "  (none)") + "\n\n"
+            "DM BIBLE — SECRETS:\n" + (secrets or "  (none)") + "\n"
+            "DM BIBLE — PLANNED BEATS:\n" + (beats or "  (none)") + "\n"
+            "DM BIBLE — SCRATCHPAD:\n" + (bible.get("scratchpad", "") or "(none)")
+        )
+
+    def _author_npc_details(self, blueprint):
+        ctx = self._blueprint_context(blueprint)
+        npcs = blueprint.get("npcs", []) or []
+
+        def author_one(npc):
+            brief = (
+                f"id: {npc.get('id')}\n"
+                f"name: {npc.get('name','')}\n"
+                f"location: {npc.get('location_id','')}\n"
+                f"role: {npc.get('role','')}\n"
+                f"known_to_player: {bool(npc.get('known_to_player', False))}"
+            )
+            user_msg = ctx + "\n\nTHIS CHARACTER TO AUTHOR:\n" + brief
+            return self._author_json(
+                NPC_DETAIL_SYSTEM, user_msg, f"npc_detail:{npc.get('id')}",
+                attempts=2, default={})
+
+        return self._author_in_parallel(npcs, lambda n: n.get("id"), author_one)
+
+    def _author_location_details(self, blueprint, npc_details):
+        ctx = self._blueprint_context(blueprint)
+        locs = blueprint.get("locations", []) or []
+        # Index authored NPC looks by where they are, so a room can paint them.
+        npcs_here = {}
+        for npc in blueprint.get("npcs", []) or []:
+            loc_id = npc.get("location_id")
+            if loc_id:
+                npcs_here.setdefault(loc_id, []).append(npc)
+
+        def author_one(loc):
+            lid = loc.get("id")
+            present = []
+            for npc in npcs_here.get(lid, []):
+                desc = (npc_details.get(npc.get("id"), {}) or {}).get("description", "")
+                present.append(f"  - {npc.get('name','')}: {desc or npc.get('role','')}")
+            brief = (
+                f"id: {lid}\n"
+                f"name: {loc.get('name','')}\n"
+                f"summary: {loc.get('summary','')}\n"
+                f"exits: {', '.join(loc.get('exits', []) or []) or '(none)'}\n"
+                "NPCs physically present here (paint each one):\n"
+                + ("\n".join(present) if present else "  (none)")
+            )
+            user_msg = ctx + "\n\nTHIS LOCATION TO AUTHOR:\n" + brief
+            return self._author_json(
+                LOCATION_DETAIL_SYSTEM, user_msg, f"loc_detail:{lid}",
+                attempts=2, default={})
+
+        return self._author_in_parallel(locs, lambda l: l.get("id"), author_one)
+
+    def _author_in_parallel(self, items, key_fn, author_fn):
+        """Run author_fn over items concurrently; return {key: result}."""
+        results = {}
+        if not items:
+            return results
+        workers = min(self.DETAIL_WORKERS, len(items))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(author_fn, it): key_fn(it) for it in items}
+            for fut in futures:
+                key = futures[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as e:
+                    _log(f"detail call failed for {key}: {e}")
+                    results[key] = {}
+        return results
+
+    def _author_json(self, system, user_msg, context, attempts=2, default=None):
+        """One detail/blueprint call with repair + a few retries. Returns
+        `default` if all attempts fail and a default was given; otherwise raises
+        the last JSONDecodeError (used for the blueprint, where failure is fatal)."""
+        last = None
+        for i in range(1, attempts + 1):
+            try:
+                raw = self._call_text(
+                    system, [{"role": "user", "parts": [{"text": user_msg}]}],
+                    context=context)
+                return self._loads_or_repair(raw, f"{context} attempt {i}")
+            except json.JSONDecodeError as e:
+                last = e
+                _log(f"{context} attempt {i}/{attempts} unparseable: {e}")
+            except Exception as e:
+                last = e
+                _log(f"{context} attempt {i}/{attempts} error: {e}")
+        if default is not None:
+            _log(f"{context}: all {attempts} attempts failed, using default")
+            return default
+        raise last
+
+    def _assemble_creation(self, blueprint, loc_details, npc_details):
+        """Fold the blueprint manifests + per-asset detail into the single dict
+        shape that _apply_creation already knows how to consume."""
+        new_locations = {}
+        for loc in blueprint.get("locations", []) or []:
+            lid = loc.get("id")
+            if not lid:
+                continue
+            d = loc_details.get(lid, {}) or {}
+            new_locations[lid] = {
+                "name": loc.get("name", ""),
+                "summary": loc.get("summary", ""),
+                "exits": loc.get("exits", []) or [],
+                "image_prompt": d.get("image_prompt", ""),
+                "negative_visual": d.get("negative_visual", ""),
+                "discovered_features": d.get("discovered_features", []) or [],
+                "visible_exits": d.get("visible_exits", []) or [],
+                "present_npc_ids": [],
+            }
+
+        new_npcs = {}
+        for npc in blueprint.get("npcs", []) or []:
+            nid = npc.get("id")
+            if not nid:
+                continue
+            d = npc_details.get(nid, {}) or {}
+            loc_id = npc.get("location_id", "")
+            new_npcs[nid] = {
+                "name": npc.get("name", ""),
+                "current_location_id": loc_id,
+                "known_to_player": d.get("known_to_player", npc.get("known_to_player", False)),
+                "description": d.get("description", ""),
+                "public_persona": d.get("public_persona", ""),
+                "voice": d.get("voice", ""),
+                "knows": d.get("knows", []) or [],
+                "hides": d.get("hides", []) or [],
+                "lies_about": d.get("lies_about", []) or [],
+                "current_intent": d.get("current_intent", ""),
+                "mood_toward_player": d.get("mood_toward_player", ""),
+            }
+            # Wire the NPC into their location's present list.
+            if loc_id in new_locations:
+                pres = new_locations[loc_id]["present_npc_ids"]
+                if nid not in pres:
+                    pres.append(nid)
+
+        return {
+            "starting_location_id": blueprint.get("starting_location_id"),
+            "narrative_clock": blueprint.get("narrative_clock"),
+            "new_locations": new_locations,
+            "new_npcs": new_npcs,
+            "dm_bible": blueprint.get("dm_bible", {}) or {},
+            "win_condition": blueprint.get("win_condition"),
+            "plot_threads": blueprint.get("plot_threads", []) or [],
+            "starting_inventory": blueprint.get("starting_inventory", []) or [],
+        }
 
     def _apply_creation(self, parsed):
         ws = self.world_state

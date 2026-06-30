@@ -113,7 +113,13 @@ class GameSession:
 
             phase = self.dm.phase
             if phase == self.dm.PHASE_CREATING:
-                self._say("system", "[The DM is preparing the world; please wait.]")
+                # Creation runs synchronously under this lock, so if we're still
+                # in CREATING when the player sends input, the earlier attempt
+                # failed. Let them retry rather than dead-ending.
+                self._say("user", text)
+                self._say("system", "Retrying world creation…")
+                self._run_creation_and_kick()
+                self._autosave()
                 return
 
             self._say("user", text)
