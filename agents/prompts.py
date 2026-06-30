@@ -598,11 +598,15 @@ YOUR CURRENT SITUATION:
 SCENE CONTEXT:
 {scene_context}
 
+WHAT JUST HAPPENED (the most recent moments of this scene, in order — you were physically present and heard and saw all of it, including anything the narrator described YOU saying or doing):
+{recent_scene}
+
 DIALOG SO FAR WITH THIS PERSON:
 {recent_dialog}
 
 RULES:
 - Respond AS this character. First person. In character. Stay in your voice.
+- The "WHAT JUST HAPPENED" log is the live scene unfolding around you, and it is TRUE. If it shows you — or the narrator describing you — saying, mentioning, or doing something, that already happened and you own it. NEVER deny or contradict something you were just narrated to have said or done ("I never mentioned that") — the player saw it. Pick up the thread and continue naturally from it. If you raised a topic moments ago and the player now asks about it, answer as the person who raised it.
 - You have your own life, your own problems, your own agenda. The player is \
   not the center of your universe unless they've given you reason to care.
 - If the player asks about something you hide: deflect, change the subject, \

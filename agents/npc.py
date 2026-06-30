@@ -38,7 +38,8 @@ class NPCAgent(BaseAgent):
     def __init__(self, game_dir=None):
         super().__init__(model=GEMINI_NPC_MODEL, temperature=0.85, game_dir=game_dir)
 
-    def speak(self, npc_data, player_input, scene_context, world_state):
+    def speak(self, npc_data, player_input, scene_context, world_state,
+              recent_scene=""):
         """Synchronous call — returns the NPC response dict directly.
 
         Called from a DM worker thread, so blocking is fine.
@@ -48,6 +49,10 @@ class NPCAgent(BaseAgent):
             player_input: what the player said/did
             scene_context: short description of what's happening in the scene
             world_state: full world state (for location name, etc.)
+            recent_scene: plain-text transcript of the last few moments of
+                narration/dialog the player has seen, so the (otherwise
+                stateless) NPC knows what was just said in its presence —
+                including lines the DM narrated on its behalf.
 
         Returns:
             dict with keys: speech, tells, internal_state_change
@@ -56,7 +61,8 @@ class NPCAgent(BaseAgent):
         npc_name = npc_data.get("name", "Unknown")
         _log(f"Speaking as {npc_name}")
 
-        system_prompt = self._build_system_prompt(npc_data, scene_context, world_state)
+        system_prompt = self._build_system_prompt(npc_data, scene_context,
+                                                  world_state, recent_scene)
 
         user_msg = f"The player says: {player_input}"
         contents = [{"role": "user", "parts": [{"text": user_msg}]}]
@@ -78,7 +84,8 @@ class NPCAgent(BaseAgent):
                 "internal_state_change": {},
             }
 
-    def _build_system_prompt(self, npc_data, scene_context, world_state):
+    def _build_system_prompt(self, npc_data, scene_context, world_state,
+                             recent_scene=""):
         loc_id = npc_data.get("current_location_id", "")
         loc = world_state.get("locations", {}).get(loc_id, {})
         loc_name = loc.get("name", loc_id)
@@ -95,6 +102,9 @@ class NPCAgent(BaseAgent):
         if not recent_dialog:
             recent_dialog = "(first conversation)"
 
+        if not recent_scene:
+            recent_scene = "(you have just been approached; nothing notable has been said yet)"
+
         return NPC_SYSTEM.format(
             name=npc_data.get("name", "Unknown"),
             persona=npc_data.get("public_persona", "An unremarkable person."),
@@ -106,5 +116,6 @@ class NPCAgent(BaseAgent):
             intent=npc_data.get("current_intent", "Going about their business."),
             mood=npc_data.get("mood_toward_player", "neutral"),
             scene_context=scene_context,
+            recent_scene=recent_scene,
             recent_dialog=recent_dialog,
         )

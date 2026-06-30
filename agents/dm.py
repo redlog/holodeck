@@ -549,6 +549,39 @@ class DungeonMaster(BaseAgent):
         _log(f"Could not resolve talk target '{target}' to a present NPC")
         return None
 
+    def _recent_scene_transcript(self, max_entries=6):
+        """Plain-text transcript of the last few moments of the scene.
+
+        The NPC agent is stateless: on its own it has no idea what the DM just
+        narrated — including dialog the DM put in the NPC's own mouth during the
+        opening or a prior beat. Without this, an NPC will flatly deny having
+        said something the player plainly saw it say. We reconstruct the recent
+        player-facing flow from _play_history (player inputs + DM narration) and
+        hand it to the NPC so it can stay coherent with what just happened.
+        """
+        history = getattr(self, "_play_history", [])
+        lines = []
+        for entry in history[-max_entries:]:
+            role = entry.get("role")
+            text = entry.get("parts", [{}])[0].get("text", "")
+            if role == "user":
+                marker = "PLAYER INPUT: "
+                idx = text.rfind(marker)
+                if idx < 0:
+                    continue  # NPC-dispatch bookkeeping message — skip
+                said = text[idx + len(marker):].strip()
+                # Skip the opening/resumed-scene directives (bracketed system text).
+                if said and not said.startswith("["):
+                    lines.append(f"Player: {said}")
+            elif role == "model":
+                try:
+                    narration = (json.loads(_strip_json_fences(text)).get("narration") or "").strip()
+                except (json.JSONDecodeError, ValueError):
+                    narration = ""
+                if narration:
+                    lines.append(f"Narration: {narration}")
+        return "\n".join(lines)
+
     def _dispatch_to_npc(self, npc_id, player_input):
         """Call the NPC agent and get their response. Synchronous (on worker thread)."""
         npc_data = self.world_state.get("npcs", {}).get(npc_id)
@@ -574,7 +607,9 @@ class DungeonMaster(BaseAgent):
             scene_context += f"Also present: {', '.join(other_npcs)}."
 
         _log(f"Dispatching to NPC agent: {npc_data.get('name', npc_id)}")
-        response = self._npc_agent.speak(npc_data, player_input, scene_context, self.world_state)
+        recent_scene = self._recent_scene_transcript()
+        response = self._npc_agent.speak(npc_data, player_input, scene_context,
+                                         self.world_state, recent_scene=recent_scene)
         # Apply any NPCs the NPC introduced (e.g., "you should talk to Officer Peterson")
         npc_introduced = response.pop("new_npcs", None) or {}
         if npc_introduced:
