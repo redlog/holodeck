@@ -664,9 +664,16 @@ STYLE_ANCHOR_TEMPLATE = (
     "A single representative illustration that establishes the canonical art style "
     "for an entire game's artwork: one ordinary person standing in a simple, lightly "
     "furnished interior, rendered in this exact medium and style. The purpose of this "
-    "image is to define the MEDIUM — the linework, brushwork, shading, level of "
-    "stylization, and color palette — so that every other illustration in the game can "
-    "match it. Fill the frame edge to edge with finished artwork. "
+    "image is to define the MEDIUM — the linework or pixels, brushwork, shading, "
+    "resolution, level of stylization, and color palette — so that every other "
+    "illustration in the game can match it. Reproduce the named style FAITHFULLY: if it "
+    "calls for a specific, retro, or low-fidelity medium (pixel art, low-resolution "
+    "16-color EGA/VGA adventure-game art, hand-painted cel animation, ink and "
+    "watercolor, etc.), commit to that medium fully — including its resolution limits, "
+    "palette limits, dithering, and characteristic texture — rather than defaulting to "
+    "a modern photorealistic or 3D-rendered look. Many older game styles are deliberately "
+    "low-resolution and use a small fixed palette; honor that exactly when it is asked for. "
+    "Fill the frame edge to edge with finished artwork. "
     "NO text, labels, UI elements, borders, or watermarks."
 )
 
@@ -688,17 +695,17 @@ STYLE_REF_DIRECTIVE = (
 SCENERY_TEMPLATE = """\
 {visual_style}.
 
-A painterly digital illustration of a single location. Paint this scene:
+Render the location below in EXACTLY that art style. The line above is the authority on the MEDIUM and rendering — the linework or pixels, brushwork, shading, resolution, palette, and degree of stylization. Match it faithfully; if it names a specific, retro, or low-fidelity medium (pixel art, low-resolution 16-color adventure-game art, cel animation, watercolor), commit to that medium fully — resolution and palette limits included — and do NOT default to a photographic or 3D-rendered look. Paint this scene:
 
 {scene}
 
 {context}
 
-The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, borders, or watermarks. Compose it as a wide three-quarter view of the whole space, the camera at a fixed elevated angle looking down into the scene.
+The image is widescreen. No characters or people unless the description explicitly says so. No text, labels, UI elements, on-screen interface, borders, or watermarks. Compose it as a wide three-quarter view of the whole space, the camera at a fixed elevated angle looking down into the scene.
 
-Every detail in this painting matters — viewers will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
+Every detail in this image matters — viewers will examine it closely and ask about anything they see. Include specific props, documents, objects, environmental clues, and atmospheric details described above. Make each detail clear enough to notice but naturally placed in the scene.
 
-Render the entire frame with care — every region should be finished painted artwork edge to edge. Do NOT add letterbox bars, vignettes, or framing borders.
+Render the entire frame with care — every region should be finished artwork edge to edge, in the established style. Do NOT add letterbox bars, vignettes, or framing borders.
 """
 
 # Sent to Imagen as a negative prompt on the from-scratch room paint, to keep
