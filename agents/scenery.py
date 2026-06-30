@@ -124,8 +124,7 @@ class SceneryAgent(BaseAgent):
         _log("painting per-game style anchor...")
         try:
             anchor_bytes = self._call_image(
-                prompt, aspect_ratio="16:9",
-                context="style_anchor", model=GEMINI_IMAGE_MODEL)
+                prompt, context="style_anchor", model=GEMINI_IMAGE_MODEL)
         except Exception as e:
             _log(f"style anchor generation failed: {e}")
             return None
@@ -133,9 +132,12 @@ class SceneryAgent(BaseAgent):
             _log("style anchor: image model returned nothing")
             return None
 
+        # The anchor is only ever fed back as a style reference, never shown on
+        # screen, so we keep the model's full frame — no cropping (a crop would
+        # just discard part of the sample sheet). Normalize to PNG/RGB for a
+        # consistent on-disk format.
         try:
             img = Image.open(io.BytesIO(anchor_bytes)).convert("RGB")
-            img = crop_to_aspect(img, 16, 9)
             anchor_bytes = to_png_bytes(img)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(anchor_bytes)
