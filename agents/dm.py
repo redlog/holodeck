@@ -745,6 +745,10 @@ class DungeonMaster(BaseAgent):
                     if woven:
                         self._apply_play_changes(woven)
                         parsed = self._merge_talk_results(parsed, woven, target_npc_id)
+                    # Persist a gist of the exchange deterministically, after any
+                    # model-supplied npc_update, so the DM remembers what was said
+                    # once the raw turn scrolls out of the trimmed play history.
+                    self._record_npc_dialog(target_npc_id, user_text, npc_response)
 
             return parsed
 
@@ -925,6 +929,40 @@ class DungeonMaster(BaseAgent):
         result["intent"] = initial.get("intent", {})
         return result
 
+    # Bound the running per-NPC dialog summary so it stays a gist, not a
+    # transcript. Each turn-note is clipped; the whole summary is capped and the
+    # oldest lines roll off.
+    _DIALOG_TURN_MAX = 200
+    _DIALOG_SUMMARY_MAX = 800
+
+    def _record_npc_dialog(self, npc_id, player_input, npc_response):
+        """Append a compact note of this exchange to the NPC's running dialog
+        summary. Deterministic — does not rely on the model volunteering a
+        dialog_summary_with_player update, which it usually omits."""
+        npc = self.world_state.get("npcs", {}).get(npc_id)
+        if not npc:
+            return
+        speech = (npc_response.get("speech") or "").strip()
+        if not speech:
+            return
+        if len(speech) > self._DIALOG_TURN_MAX:
+            speech = speech[: self._DIALOG_TURN_MAX - 3].rstrip() + "..."
+        player_part = (player_input or "").strip()
+        if len(player_part) > self._DIALOG_TURN_MAX:
+            player_part = player_part[: self._DIALOG_TURN_MAX - 3].rstrip() + "..."
+        note = f'Player: "{player_part}" -> {speech}' if player_part else speech
+
+        existing = (npc.get("dialog_summary_with_player") or "").strip()
+        combined = (existing + "\n" + note).strip() if existing else note
+        if len(combined) > self._DIALOG_SUMMARY_MAX:
+            # Keep the most recent text; drop a partial leading line so the
+            # summary always starts at a clean turn boundary.
+            combined = combined[-self._DIALOG_SUMMARY_MAX:]
+            nl = combined.find("\n")
+            if nl != -1:
+                combined = combined[nl + 1:]
+        npc["dialog_summary_with_player"] = combined
+
     def _trim_history(self):
         """Keep history bounded and strip world-state bloat from older entries.
 
@@ -1062,11 +1100,19 @@ class DungeonMaster(BaseAgent):
                 off_loc_id = npc.get("current_location_id", "?")
                 off_loc = ws.get("locations", {}).get(off_loc_id, {})
                 off_loc_name = off_loc.get("name", off_loc_id)
-                off_lines.append(
+                line = (
                     f"  {npc.get('name', nid)} (id: {nid}): "
                     f"at {off_loc_name} | "
-                    f"Intent: {npc.get('current_intent', '?')}"
+                    f"Intent: {npc.get('current_intent', '?')} | "
+                    f"Known: {npc.get('known_to_player', False)}"
                 )
+                # Carry the met-history forward even when the NPC is off-screen,
+                # so the DM doesn't forget the player ever met them once the raw
+                # exchange scrolls out of the trimmed play history.
+                summary = npc.get("dialog_summary_with_player", "")
+                if summary:
+                    line += f"\n    Dialog so far: {summary}"
+                off_lines.append(line)
             sections.append("OFF-SCREEN NPCs:\n" + "\n".join(off_lines))
 
         # Player
