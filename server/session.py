@@ -142,13 +142,8 @@ class GameSession:
         self._say("system", "Preparing the world...")
         result = self.dm.start_creation() or {}
         if result.get("creation_complete"):
-            self._say(
-                "system",
-                f"World ready — {result.get('location_count', 0)} location(s), "
-                f"{result.get('npc_count', 0)} NPC(s), "
-                f"{result.get('secret_count', 0)} secrets, "
-                f"{result.get('thread_count', 0)} plot threads."
-            )
+            # Don't announce location/NPC/secret/thread counts — that leaks the
+            # shape of the mystery before the player has discovered anything.
             self._enter_play()
         else:
             self._say("system", f"World creation failed: {result.get('error', 'unknown error')}")
