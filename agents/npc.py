@@ -69,7 +69,10 @@ class NPCAgent(BaseAgent):
 
         try:
             raw = self._call_text(system_prompt, contents, context=npc_name)
-            parsed = json.loads(_strip_json_fences(raw))
+            # strict=False tolerates raw newlines/tabs the model leaves
+            # unescaped inside string values (otherwise 'Invalid control
+            # character' kills an otherwise-valid response).
+            parsed = json.loads(_strip_json_fences(raw), strict=False)
             parsed.setdefault("speech", "...")
             parsed.setdefault("tells", [])
             parsed.setdefault("internal_state_change", {})

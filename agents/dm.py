@@ -61,6 +61,15 @@ def _strip_json_fences(text):
     return text.strip()
 
 
+def _loads_json(text):
+    """Parse a model JSON reply, stripping fences first. Uses strict=False so
+    the raw control characters Gemini routinely leaves unescaped inside string
+    values — literal newlines and tabs in multi-line prose — don't blow up the
+    parse with 'Invalid control character'. Raises json.JSONDecodeError on
+    genuinely malformed output, which callers still handle."""
+    return json.loads(_strip_json_fences(text), strict=False)
+
+
 def _thread_id_looks_like_prose(tid):
     """A real thread id is a short lowercase_snake_case slug. When the model
     instead drops the summary sentence (or a spaced title) into the id field,
@@ -151,7 +160,7 @@ class DungeonMaster(BaseAgent):
             self._history.append({"role": "user", "parts": [{"text": opening_user_msg}]})
             raw = self._call_text(INTERVIEW_SYSTEM, self._history, context="interview")
             self._history.append({"role": "model", "parts": [{"text": raw}]})
-            parsed = json.loads(_strip_json_fences(raw))
+            parsed = _loads_json(raw)
             self._scrub_interview_response(parsed)
             return parsed
         except Exception as e:
@@ -188,7 +197,7 @@ class DungeonMaster(BaseAgent):
                 self._temperature = original_temp
 
             self._history.append({"role": "model", "parts": [{"text": raw}]})
-            parsed = json.loads(_strip_json_fences(raw))
+            parsed = _loads_json(raw)
             self._scrub_interview_response(parsed)
             self._apply_interview_updates(parsed)
 
@@ -271,7 +280,7 @@ class DungeonMaster(BaseAgent):
             raw = self._call_text(self._creation_system(), [
                 {"role": "user", "parts": [{"text": user_msg}]}
             ], context="author")
-            parsed = json.loads(_strip_json_fences(raw))
+            parsed = _loads_json(raw)
             self._apply_creation(parsed)
             if self._is_closed_world():
                 self._validate_closed_world_map()
@@ -480,7 +489,7 @@ class DungeonMaster(BaseAgent):
                 {"role": "model", "parts": [{"text": raw}]}
             )
 
-            parsed = json.loads(_strip_json_fences(raw))
+            parsed = _loads_json(raw)
             self._apply_play_changes(parsed)
 
             intent = parsed.get("intent", {})
@@ -578,7 +587,7 @@ class DungeonMaster(BaseAgent):
                     lines.append(f"Player: {said}")
             elif role == "model":
                 try:
-                    narration = (json.loads(_strip_json_fences(text)).get("narration") or "").strip()
+                    narration = (_loads_json(text).get("narration") or "").strip()
                 except (json.JSONDecodeError, ValueError):
                     narration = ""
                 if narration:
@@ -647,7 +656,7 @@ class DungeonMaster(BaseAgent):
             self._play_history.append(
                 {"role": "model", "parts": [{"text": raw}]}
             )
-            return json.loads(_strip_json_fences(raw))
+            return _loads_json(raw)
         except Exception as e:
             _log(f"Weave error: {e}")
             # Fall back: construct narration directly from NPC response
@@ -723,7 +732,7 @@ class DungeonMaster(BaseAgent):
     def _compact_model_entry(text):
         """Strip state_changes JSON bloat from old DM responses, keep narration."""
         try:
-            parsed = json.loads(_strip_json_fences(text))
+            parsed = _loads_json(text)
             narration = parsed.get("narration", "")
             speaker = parsed.get("speaker", "dm")
             # Reconstruct a minimal version
