@@ -305,12 +305,15 @@ class DungeonMaster(BaseAgent):
             loc_def.setdefault("discovered_features", [])
             loc_def.setdefault("events_log_summary", "")
             loc_def.setdefault("exits", [])  # closed-world adjacency; empty in open mode
+            loc_def.setdefault("visible_exits", [])  # spoiler-free spatial labels for the UI
+            loc_def.setdefault("visited", False)  # gates revealing a destination's name
             loc_def["id"] = loc_id
             ws["locations"][loc_id] = loc_def
 
         starting_id = parsed.get("starting_location_id")
         if starting_id and starting_id in ws["locations"]:
             ws["current_location_id"] = starting_id
+            ws["locations"][starting_id]["visited"] = True
 
         # Narrative clock
         clock = parsed.get("narrative_clock")
@@ -322,7 +325,7 @@ class DungeonMaster(BaseAgent):
         ws.setdefault("npcs", {})
         for npc_id, npc_def in new_npcs.items():
             npc_def.setdefault("portrait_path", None)
-            npc_def.setdefault("known_to_player", True)
+            npc_def.setdefault("known_to_player", False)
             npc_def.setdefault("dialog_summary_with_player", "")
             npc_def.setdefault("voice", "")
             npc_def.setdefault("knows", [])
@@ -590,6 +593,10 @@ class DungeonMaster(BaseAgent):
         if not self._npc_agent.connected:
             _log("NPC agent not connected, DM will voice this NPC directly")
             return None
+
+        # Talking to someone establishes who they are — reveal their name in
+        # the on-screen "who's here" panel from now on.
+        npc_data["known_to_player"] = True
 
         loc_id = self.world_state.get("current_location_id")
         loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
@@ -915,7 +922,7 @@ class DungeonMaster(BaseAgent):
                 _log(f"Dynamic NPC {npc_id} already exists, skipping")
                 continue
             npc_def.setdefault("portrait_path", None)
-            npc_def.setdefault("known_to_player", True)
+            npc_def.setdefault("known_to_player", False)
             npc_def.setdefault("dialog_summary_with_player", "")
             npc_def.setdefault("voice", "")
             npc_def.setdefault("knows", [])
@@ -945,6 +952,9 @@ class DungeonMaster(BaseAgent):
             new_loc.setdefault("present_npc_ids", [])
             new_loc.setdefault("discovered_features", [])
             new_loc.setdefault("events_log_summary", "")
+            new_loc.setdefault("exits", [])
+            new_loc.setdefault("visible_exits", [])
+            new_loc.setdefault("visited", False)
             ws.setdefault("locations", {})[loc_id] = new_loc
             _log(f"Created new location: {loc_id}")
 
@@ -957,6 +967,7 @@ class DungeonMaster(BaseAgent):
         new_loc_id = changes.get("current_location_id")
         if new_loc_id and new_loc_id in ws.get("locations", {}):
             ws["current_location_id"] = new_loc_id
+            ws["locations"][new_loc_id]["visited"] = True
             _log(f"Moved to: {new_loc_id}")
 
         # Narrative clock

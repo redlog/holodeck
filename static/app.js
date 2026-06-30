@@ -115,6 +115,9 @@ function applyView(v) {
   }
   $("stage").classList.toggle("no-room", !inPlay);
 
+  // Who's here + visible exits, shown under the scene image.
+  renderSceneInfo(v, inPlay);
+
   // Portrait + speaker
   const portrait = $("portrait");
   const url = v.speaker.portrait_url;
@@ -159,6 +162,45 @@ function applyView(v) {
 
   // Keep polling while images are still rendering.
   if (v.pending) startPolling(); else stopPolling();
+}
+
+// Bottom-of-scene overlay: present NPCs (portrait thumbnails; name only once
+// known) on the left, spoiler-free exit labels on the right.
+function renderSceneInfo(v, inPlay) {
+  const box = $("scene-info");
+  const npcs = (inPlay && v.npcs_present) || [];
+  const exits = (inPlay && v.exits) || [];
+  if (!npcs.length && !exits.length) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const nbox = $("scene-npcs");
+  nbox.innerHTML = "";
+  for (const n of npcs) {
+    const chip = document.createElement("div");
+    chip.className = "npc-chip" + (n.known ? "" : " unknown");
+    const thumb = n.portrait_url
+      ? `<img src="${n.portrait_url}" alt="">`
+      : `<span class="npc-ph">?</span>`;
+    const cap = n.known ? escapeHtml(n.name || "") : "?";
+    chip.innerHTML = `<div class="npc-thumb">${thumb}</div><div class="npc-cap">${cap}</div>`;
+    nbox.appendChild(chip);
+  }
+
+  const ebox = $("scene-exits");
+  if (exits.length) {
+    const parts = exits.map((e) => {
+      const label = escapeHtml(e.label);
+      return e.destination
+        ? `${label} <span class="exit-dest">→ ${escapeHtml(e.destination)}</span>`
+        : label;
+    });
+    ebox.innerHTML = `<span class="exits-label">Exits:</span> ` +
+      parts.join(`<span class="exit-sep"> · </span>`);
+    ebox.hidden = false;
+  } else {
+    ebox.hidden = true;
+    ebox.innerHTML = "";
+  }
 }
 
 function renderTranscript(lines) {

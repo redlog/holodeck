@@ -117,6 +117,8 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
 
    List "discovered_features" the player would notice on entry. Set its present_npc_ids based on which NPCs (if any) are physically there.
 
+   List "visible_exits" — the ways out of this room that the player can SEE from inside it, each described PURELY by its appearance and position within THIS room, NEVER by where it leads. This drives an on-screen exits list shown under the scene, so it must never spoil the adjacent room's identity or contents. GOOD: "a heavy oak door in the left wall", "a narrow staircase descending in the far corner", "an archway to the north", "a grimy window onto the fire escape". BAD (these leak the destination): "door to the secret chamber", "stairs down to the smuggler's cellar", "exit to the morgue". Each entry is {"label": "<spoiler-free spatial description>", "to": "<destination location id, if you have already created that location — otherwise omit 'to'>"}. The label is the only thing shown to the player until they have actually been through that exit.
+
 2. CREATE OPENING NPCs. Think carefully about who would naturally be present at game start given the location, premise, AND TIME OF DAY. Create every NPC the player would plausibly encounter in the opening area — not just the player's starting room. A house might have family members in the kitchen or bedroom; an office might have coworkers at their desks; a bar might have a bartender and a few regulars. If the player starts alone, zero NPCs is fine. If the setting calls for a populated environment, create them all. Do NOT invent NPCs who have no logical reason to be present at this specific time.
 
    For each NPC, fill in:
@@ -130,6 +132,7 @@ BEFORE YOU WRITE ANYTHING: decide what time of day and day of the week it is (st
      - current_location_id (probably the starting location)
      - current_intent (what they're doing right now)
      - mood_toward_player (a short adjective phrase)
+     - known_to_player: whether the player ALREADY knows this person's name/identity at game start. Default false — a stranger across the room is not "known" just because they are visible. Set it true ONLY for someone the player would obviously already know by name as the game opens (their partner, their boss who greets them by name, a family member), or whom your opening narration explicitly names and introduces. The on-screen "who's here" panel hides the name of anyone not yet known, showing only their portrait, until the player learns who they are.
 
 3. WRITE THE DM BIBLE — the hidden truths. Decide NOW, in private, what is true about this world that the player doesn't know yet.
      - secrets: Concrete facts you've committed to. Each has an id, the fact, and revealed=false. DO NOT be vague — make decisions. CALIBRATE TO GENRE: a mystery or thriller warrants 4–8 secrets, often involving deception, crimes, or hidden motives. A social game, a cozy adventure, or a slice-of-life setting might have 1–3 secrets — and they need not be dark. A hotel bar game might have "the pianist is in town to propose to someone" or "the woman at the end of the bar just got a promotion she hasn't told anyone about" — not everyone is running a con. Secrets drive the story forward; they don't have to make everyone villainous.
@@ -154,7 +157,8 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
       "image_prompt": "Rich painterly description of the scene for the image generator...",
       "negative_visual": "sunlight, daytime, crowds",
       "present_npc_ids": [],
-      "discovered_features": ["worn wooden desk", "rain-streaked window", "case file open under a banker's lamp"]
+      "discovered_features": ["worn wooden desk", "rain-streaked window", "case file open under a banker's lamp"],
+      "visible_exits": [{"label": "a frosted-glass door onto the second-floor landing", "to": "landing"}]
     }
   },
   "new_npcs": {
@@ -168,7 +172,8 @@ RESPOND WITH JSON IN THIS EXACT SHAPE:
       "lies_about": [],
       "current_location_id": "tavern",
       "current_intent": "Closing up, hoping for no trouble tonight.",
-      "mood_toward_player": "wary but polite"
+      "mood_toward_player": "wary but polite",
+      "known_to_player": false
     }
   },
   "dm_bible": {
@@ -221,7 +226,13 @@ A. AUTHOR EVERY LOCATION NOW. new_locations must contain the ENTIRE map the
    be created later — there is no "later" creation in closed mode.
 
 B. CONNECT THE MAP WITH EXITS. Every location MUST include an "exits" field: a
-   list of the location ids you can travel to directly from it. CRITICAL: every
+   list of the location ids you can travel to directly from it. This is the
+   navigation truth (where movement is allowed). SEPARATELY, give each location
+   a "visible_exits" list (see above) that DESCRIBES those same ways out for the
+   on-screen panel — one spoiler-free spatial label per exit, with its "to" set
+   to the matching exit id. The two must line up: every id in "exits" should have
+   a corresponding labelled entry in "visible_exits", and vice versa. Keep the
+   labels free of any hint about the destination's name or contents. CRITICAL: every
    id in an exits list MUST be the EXACT key of a location you defined in
    new_locations — character for character. Do not invent ids, abbreviate them,
    or reference a place you didn't create (an exit to "main_road_to_lyceum" when
@@ -336,11 +347,12 @@ STATE CHANGES — field details:
   (1) PROACTIVE — when the player enters a new location, create named/important people who would be present there (a bartender who knows the regulars, the police chief who runs the precinct). Background extras ("a few drunks", "officers at desks") stay as visual flavor in the image_prompt only — do NOT create an NPC for every face in the crowd. Use judgment: if the player would obviously want to talk to someone, create them.
   (2) REACTIVE — when the player tries to talk to someone described in the scene who isn't yet an NPC, create them here so the conversation can proceed. The player said "talk to the bartender" and there's no bartender NPC? Create one now.
   (3) REFERENCED — when an NPC names a specific person who should exist in the world ("you should talk to Officer Peterson"), create that person so the player can actually find and talk to them.
-  Format: same as creation phase new_npcs. Each entry needs name, description, public_persona, voice, knows ([] is fine for thin NPCs), hides, lies_about, current_location_id, current_intent, mood_toward_player. The NPC will automatically be added to their location's present_npc_ids.
+  Format: same as creation phase new_npcs. Each entry needs name, description, public_persona, voice, knows ([] is fine for thin NPCs), hides, lies_about, current_location_id, current_intent, mood_toward_player, known_to_player. The NPC will automatically be added to their location's present_npc_ids. Set known_to_player false for anyone the player has not yet learned the name of (the strong default for a freshly-encountered stranger); true only if they are named and introduced at the moment they appear.
   CRITICAL — description must be a rich visual portrait (2–4 sentences): gender, approximate age, ethnicity/skin tone, hair, build, face, clothing. This is the source of truth for both the portrait painter and the room image — be specific enough that both artists paint the same person. If this NPC is already described in the current room's image_prompt or narration, your description here must match exactly.
 
 - "create_location": when the player moves to a place that doesn't exist yet, you MUST create it. Provide a full location object:
-  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "negative_visual": "...", "present_npc_ids": [], "discovered_features": [...]}
+  {"id": "docks", "name": "The Docks", "summary": "...", "image_prompt": "...", "negative_visual": "...", "present_npc_ids": [], "discovered_features": [...], "visible_exits": [{"label": "a gangway up to the moored freighter", "to": "freighter_deck"}]}
+  Include "visible_exits": the ways out the player can see from inside this room, each labelled PURELY by its appearance and position in THIS room and NEVER by where it leads (it is shown on-screen, so it must not spoil the adjacent room). "a rusted door in the north wall", not "door to the evidence room". Set "to" only for exits whose destination location already exists; omit it otherwise.
   The image_prompt is CRITICAL — it becomes the visual ground truth for this location. Write it as a rich, detailed painterly description that an image generator can paint from. Include:
     * The physical space, lighting, mood, and atmosphere — ALL reflecting the current time of day (check "Current time" in the world state)
     * The current PHYSICAL STATE of the place, made explicit — abandoned means cold, dark, unlit, dusty, no fire or glow; spell out consequences the painter would not infer
@@ -379,6 +391,7 @@ STATE CHANGES — field details:
 - "npc_updates": dict of npc_id → partial NPC state to merge. For example:
   {"bartender": {"mood_toward_player": "hostile", "current_intent": "Call the bouncer"}}
   Use this to update mood, intent, dialog_summary, known_to_player, or current_location_id.
+  NAME REVEAL: an NPC's name is hidden from the on-screen "who's here" panel until known_to_player is true (their portrait still shows). The MOMENT the player learns who someone is — you name and introduce them in narration, they introduce themselves, or the player addresses them by a name that fits — set {"<npc_id>": {"known_to_player": true}} so the panel can show their name. (Talking to an NPC marks them known automatically; you only need this for NPCs you name in narration without a direct conversation.)
 
 - "reveal_secret": list of secret id strings from the DM bible when a secret is revealed to the player through narration or discovery.
 

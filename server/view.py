@@ -48,17 +48,38 @@ def to_player_view(session):
     loc_id = ws.get("current_location_id")
     loc = ws.get("locations", {}).get(loc_id, {}) if loc_id else {}
 
-    # NPCs visibly present — name + portrait only. Intents/knows/hides/lies
-    # are deliberately omitted, and unknown NPCs aren't listed at all.
+    # NPCs visibly present. Everyone physically here is listed (the player can
+    # see them), but only their PORTRAIT is exposed until they're known —
+    # name and real id are withheld for strangers so a spoilery slug like
+    # "the_killer" never reaches the browser. Intents/knows/hides/lies are
+    # always omitted.
     present = []
     for nid in loc.get("present_npc_ids", []):
         npc = npcs.get(nid)
-        if npc and npc.get("known_to_player", True):
-            present.append({
-                "id": nid,
-                "name": npc.get("name", nid),
-                "portrait_url": media_url(npc.get("portrait_path")),
-            })
+        if not npc:
+            continue
+        known = bool(npc.get("known_to_player", False))
+        present.append({
+            "id": nid if known else None,
+            "name": npc.get("name", nid) if known else None,
+            "known": known,
+            "portrait_url": media_url(npc.get("portrait_path")),
+        })
+
+    # Visible exits — spoiler-free spatial labels for the current room. The
+    # destination's NAME is revealed only once the player has actually been
+    # there (visited); until then the label is all the browser ever sees.
+    exits = []
+    all_locs = ws.get("locations", {})
+    for ex in loc.get("visible_exits", []) or []:
+        if not isinstance(ex, dict):
+            continue
+        label = ex.get("label")
+        if not label:
+            continue
+        dest = all_locs.get(ex.get("to"), {}) if ex.get("to") else {}
+        destination = dest.get("name") if dest.get("visited") else None
+        exits.append({"label": label, "destination": destination})
 
     inventory = []
     for entry in player.get("inventory", []):
@@ -108,6 +129,7 @@ def to_player_view(session):
             "portrait_url": speaker_portrait,
         },
         "npcs_present": present,
+        "exits": exits,
         "inventory": inventory,
         "threads": threads,
         "transcript": [{"source": s, "text": t} for s, t in session.transcript],

@@ -146,6 +146,71 @@ button[hidden] { display: none; }
 }
 #room-placeholder { z-index: 1; }
 
+/* Bottom-of-scene overlay: who's here + visible exits. Sits over the lower
+   edge of the contained image, readable against a soft gradient scrim. */
+#scene-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 14px 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+#scene-npcs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.npc-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 52px;
+}
+.npc-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--portrait-bg);
+  border: 2px solid var(--portrait-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.npc-chip.unknown .npc-thumb { border-style: dashed; opacity: 0.85; }
+.npc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.npc-thumb .npc-ph { color: var(--system); font-size: 18px; }
+.npc-cap {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.2;
+  max-width: 60px;
+  text-align: center;
+  color: #eee;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.npc-chip.unknown .npc-cap { color: var(--system); }
+#scene-exits {
+  font-size: 12px;
+  color: #eee;
+  text-shadow: 0 1px 2px #000;
+  text-align: right;
+  max-width: 55%;
+}
+#scene-exits .exits-label { color: var(--system); }
+#scene-exits .exit-dest { color: var(--dm); }
+#scene-exits .exit-sep { color: var(--system); }
+
 /* Draggable divider between the scene and the text (row- or col-resize per
    layout, set above). */
 #room-resizer {
