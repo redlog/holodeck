@@ -362,7 +362,7 @@ STATE CHANGES — field details:
 - "npc_updates": dict of npc_id → partial NPC state to merge. For example:
   {"bartender": {"mood_toward_player": "hostile", "current_intent": "Call the bouncer"}}
   Use this to update mood, intent, dialog_summary, known_to_player, or current_location_id.
-  NAME REVEAL: an NPC's name is hidden from the on-screen "who's here" panel until known_to_player is true (their portrait still shows). The MOMENT the player learns who someone is — you name and introduce them in narration, they introduce themselves, or the player addresses them by a name that fits — set {"<npc_id>": {"known_to_player": true}} so the panel can show their name. (Talking to an NPC marks them known automatically; you only need this for NPCs you name in narration without a direct conversation.)
+  NAME REVEAL: an NPC's name is hidden from the on-screen "who's here" panel until known_to_player is true (their portrait still shows), and you must not use it in narration either (see the NAMES rule below). Merely talking to someone does NOT reveal their name. The MOMENT the player character genuinely learns who someone is — a self-introduction, another character naming them, a document or ID — set {"<npc_id>": {"known_to_player": true}} so both you and the panel can start using the name.
 
 - "reveal_secret": list of secret id strings from the DM bible when a secret is revealed to the player through narration or discovery.
 
@@ -397,6 +397,7 @@ STATE CHANGES — field details:
 RULES:
 - OMIT state_changes fields that have no changes (null, empty list, empty dict). Only include fields with actual changes.
 - The "narration" field is the ONLY thing the player sees. Never leak bible secrets, intent classification, or state machinery into narration.
+- NAMES ARE INFORMATION — NARRATE FROM THE CHARACTER'S KNOWLEDGE, NOT YOURS. Each NPC in the world state has a "Known" flag. While it is false, the player character has NOT learned that person's name, and your narration must never use it — not for a stranger across the room, not for someone mid-conversation, and especially not for a dead body ("A man in a rumpled gray suit lies sprawled behind the desk", NEVER "It's Vance"). Refer to unknown people by appearance or role: "the barmaid", "the man in the gray suit", "the dead man". A name is learned only DIEGETICALLY: they introduce themselves, another character names them, a document/ID/nameplate names them, or the player character would already plausibly know them (an old friend, a famous face). The moment that happens, use the name freely and set {"<npc_id>": {"known_to_player": true}} in npc_updates. If the player addresses a stranger by a name they never learned, that's the player guessing — the character can react, but don't treat the name as established.
 - You KNOW your bible. Use it to maintain consistency. If a secret says "the bartender is the murderer," never let the bartender accidentally confess unless the player has earned that revelation.
 - THE TRANSCRIPT IS GROUND TRUTH — NEVER FABRICATE PAST EVENTS. Only events that actually appear in the conversation history happened. NEVER claim, in narration or in state, that an NPC said, did, or revealed something earlier unless it genuinely occurred in the dialog (and is reflected in that NPC's dialog_summary_with_player). Do NOT put words in an NPC's mouth retroactively, invent a prior conversation, or assert the player "recalls" something that was never narrated. This is a critical failure: it makes the game incoherent and makes the player feel gaslit.
   - SURFACE CLUES THROUGH REAL PLAY, NOT INVENTED HISTORY. Your bible's secrets and planned_beats are things the player has NOT learned yet. To deliver a clue, have the player discover it NOW — observe it in the scene, find a document, or hear it from an NPC in an actual exchange — rather than narrating that they were "already told." A secret being in your bible does not mean the player knows it; you knowing where the drug drop is does not mean an NPC mentioned it.
@@ -501,7 +502,7 @@ NPC RESPONSE:
   state_change: {state_change}
 
 Now WEAVE this into your narration for the player. Use the speech verbatim \
-(in quotes, attributed to {npc_name}). Work the tells naturally into the \
+(in quotes). {attribution_note} Work the tells naturally into the \
 surrounding prose — the player should notice them as physical details, not \
 labeled signals. Apply the state_change to npc_updates.
 
@@ -534,6 +535,20 @@ for relevant keywords.
 
 PLAYER INPUT: {player_input}
 """
+
+# Attribution guidance interpolated into DM_NPC_DISPATCH depending on whether
+# the player has learned this NPC's name yet (known_to_player).
+DM_NPC_ATTRIBUTION_KNOWN = """\
+Attribute the speech to {npc_name} by name."""
+
+DM_NPC_ATTRIBUTION_UNKNOWN = """\
+IMPORTANT: the player has NOT yet learned this character's name. Do NOT write \
+"{npc_name}" anywhere in your narration — attribute the speech to a physical \
+descriptor instead ("the woman behind the counter", "the gray-haired man"). \
+The ONE exception: if the speech itself reveals the name (they introduce \
+themselves, or it is spoken by someone else in the exchange), use the name \
+from that moment on AND set {{"{npc_id}": {{"known_to_player": true}}}} in \
+npc_updates."""
 
 DM_BYSTANDER_CHECK = """\
 BYSTANDER AWARENESS — DEFAULT IS NO REACTION.

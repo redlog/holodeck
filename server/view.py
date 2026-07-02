@@ -100,7 +100,13 @@ def to_player_view(session):
         speaker_portrait = media_url(player.get("portrait_path"))
     else:
         snpc = npcs.get(speaker_id, {})
-        speaker_name = snpc.get("name") or speaker_id
+        # Same rule as npcs_present: a stranger's name (and spoilery id) stay
+        # server-side until the player has learned who they are.
+        if snpc.get("known_to_player"):
+            speaker_name = snpc.get("name") or speaker_id
+        else:
+            speaker_name = "???"
+            speaker_id = None
         speaker_portrait = media_url(snpc.get("portrait_path"))
 
     # Only plot threads the player knows about.

@@ -44,6 +44,7 @@ from agents.prompts import (
     PLAY_SYSTEM, CLOSED_WORLD_PLAY_ADDENDUM,
     OPENING_SCENE_DIRECTIVE, RESUMED_SCENE_DIRECTIVE,
     DM_NPC_DISPATCH,
+    DM_NPC_ATTRIBUTION_KNOWN, DM_NPC_ATTRIBUTION_UNKNOWN,
 )
 from config import GEMINI_DM_MODEL
 
@@ -847,9 +848,9 @@ class DungeonMaster(BaseAgent):
             _log("NPC agent not connected, DM will voice this NPC directly")
             return None
 
-        # Talking to someone establishes who they are — reveal their name in
-        # the on-screen "who's here" panel from now on.
-        npc_data["known_to_player"] = True
+        # NOTE: talking to someone does NOT reveal their name — known_to_player
+        # flips only when the name is learned in-fiction (the DM sets it via
+        # npc_updates when the NPC introduces themselves or is named).
 
         loc_id = self.world_state.get("current_location_id")
         loc = self.world_state.get("locations", {}).get(loc_id, {}) if loc_id else {}
@@ -881,8 +882,15 @@ class DungeonMaster(BaseAgent):
         npc_data = self.world_state.get("npcs", {}).get(npc_id, {})
         npc_name = npc_data.get("name", npc_id)
 
+        if npc_data.get("known_to_player"):
+            attribution_note = DM_NPC_ATTRIBUTION_KNOWN.format(npc_name=npc_name)
+        else:
+            attribution_note = DM_NPC_ATTRIBUTION_UNKNOWN.format(
+                npc_name=npc_name, npc_id=npc_id)
+
         dispatch_msg = DM_NPC_DISPATCH.format(
             npc_name=npc_name,
+            attribution_note=attribution_note,
             speech=npc_response.get("speech", "..."),
             tells=json.dumps(npc_response.get("tells", [])),
             state_change=json.dumps(npc_response.get("internal_state_change", {})),
